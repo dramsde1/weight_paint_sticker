@@ -1,0 +1,1 @@
+# weight_paint_stamp
