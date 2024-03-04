@@ -98,19 +98,6 @@ def estimate_target_vertex_group(source_armature_name):
 
 
 
-def get_source_weights(source_armature_name, target_armature_name):
-
-    #get source mesh
-    source_mesh = get_mesh_from_armature(source_armature_name)
-
-    #get target mesh
-    target_mesh = get_mesh_from_armature(target_armature_name)
-
-    #loop through source armature bones
-    for source_bone in source_armature.pose.bones:
-        #
-        if source_bone_name in bpy.data.objects[mesh_name].vertex_groups:
-            source_vertex_group = bpy.data.objects[mesh_name].vertex_groups.get(source_bone_name)
 
 
 
