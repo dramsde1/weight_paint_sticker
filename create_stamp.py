@@ -29,7 +29,7 @@ def get_mesh_from_armature(armature_name):
 
 
 #1) get the weights for each vertex in a vertex groups for a single bone 
-def estimate_target_vertex(source_vertex):
+def estimate_target_island(distance_dict):
     
 
 
@@ -43,11 +43,33 @@ def is_in_vertex_group(vert_index, vert_group):
       return vert_group.weight(vert_index) > 0
 
 
+
+def find_center(vertex_island_dict):
+
+    vertex_island = [v for v in vertex_island_dict]
+    center_point = mathutils.Vector()
+    for vertex in vertex_island:
+        center_point += vertex
+    center_point /= len(vertex_island)
+
+    return center_point
+
+
+def distance_from_empty(empty_loc, vertex_island_dict):
+    center = empty_loc 
+    distance_dict = [center - v for v in vertex_island_dict:]
+    return distance_dict
+
+
+
 #4) allow on mouse movement to translate the whole weight painting map for a bone
-def transfer_weights(source_armature_name, target_armature_name, source_mesh_name, target_mesh_name):
+def transfer_weights(source_armature_name, target_armature_name, source_mesh_name, target_mesh_name, empty_object):
+    vertex_island = {} 
+
 
     # Switch to object mode NOTE: need to figure out why I need to do this
     bpy.ops.object.mode_set(mode='OBJECT')
+
 
     #loop through source bones / target ones will be the same names
     for source_vertex_group in bpy.data.objects[source_armature_name].pose.bones:
@@ -73,20 +95,48 @@ def transfer_weights(source_armature_name, target_armature_name, source_mesh_nam
                     if is_in_vertex_group(v.index, source_vertex_group):
                         # Assign the weight to the target group
                         weight = source_vertex_group.weight(v.index)
-
+                        vertex_island[v] = weight
                         """
                             May want to cache all of the weights somehow, then have a while loop run while you use mouse events to decide where to translate the weights stamp and then have a 
+
                             key to both place the map and jump out of the while loop
+
+
+                            Need to store two things:
+                                weight of original source vertex within original vertex group
+                                the position of the vertex 
+
+                            What data structure to store is best?
+                                for fast look up perhaps create a hash from the positional coordinates and use that as an id in a dictionary
+                                {"hash": weight}
+
+                                then once you store all of the non zero vertices in the vertex group into the dictionary, that will make up the weight island. 
+                                the next thing you have to do is find the center of the island
+                                then once you find the center you need to convert the key for each element to be the distance hash from the center point so that it becomes
+
+                                {distance_from_center: weight}
+
+                                then once you have that information stored you can use an empty_object to move the whole island on the target mesh and then calculate where the verteices should map to
+
                         """
 
 
-
-
-                        target_vertex = estimate_target_vertex(v)
-                        if target_vertex:
-                            target_vertex_group.add([target_vertex.index], weight, 'REPLACE')
                 except RuntimeError as e:
                     print(e)
+
+            center_point = find_center(vertex_island)
+            
+            #change center point to where the object is
+
+            empty_loc = empty_object.location
+            #convert all vertex keys to distance from center point
+            distance_dict = distance_from_empty(empty_loc, vertex_island)
+            
+            #this will estiamte the target island and change the weights of thVy
+            estimate_target_island(distance_dict)
+
+            if target_vertex:
+                target_vertex_group.add([target_vertex.index], weight, 'REPLACE')
 
             print(f"Vertex group weights transferred from {source_bone_name} to {target_bone_name}")
         else:
