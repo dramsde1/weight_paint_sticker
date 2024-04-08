@@ -127,7 +127,7 @@ def remap_vertex_group(source_vertex_group, source_mesh_name, target_mesh_name, 
         mesh_data = bpy.data.objects[source_mesh_name].data
 
 
-        # Loop through all vertices to get all non zero weights and their vertex coorindates
+        # Loop through all vertices to get all non zero weights and their vertex coordinates
         for v in mesh_data.vertices:
             # Get the weight of the vertex in the source group
             try:
@@ -138,7 +138,6 @@ def remap_vertex_group(source_vertex_group, source_mesh_name, target_mesh_name, 
                     weight = source_vertex_group.weight(v.index)
                     vertex_island[v] = weight
 
-
             except RuntimeError as e:
                 print(e)
 
@@ -148,6 +147,8 @@ def remap_vertex_group(source_vertex_group, source_mesh_name, target_mesh_name, 
         distance_dict = distance_from_center(center_point, vertex_island)
         
         empty_loc = empty_object.location
+        
+        #for now just make sure the faces are oriented in the same way and dont worry about rotating the target island based off the empty object
 
         #this will estiamte the target island and change the weights of them
         estimate_target_island(distance_dict, target_mesh, empty_loc, source_vertex_group.name)
