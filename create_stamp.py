@@ -14,6 +14,30 @@ TRANSFER TO NEW ARMATURE
 4) allow on mouse movement to translate the whole weight painting map for a bone
 
 """
+"""
+    May want to cache all of the weights somehow, then have a while loop run while you use mouse events to decide where to translate the weights stamp and then have a 
+
+    key to both place the map and jump out of the while loop
+
+
+    Need to store two things:
+        weight of original source vertex within original vertex group
+        the position of the vertex 
+
+    What data structure to store is best?
+        for fast look up perhaps create a hash from the positional coordinates and use that as an id in a dictionary
+        {"hash": weight}
+
+        then once you store all of the non zero vertices in the vertex group into the dictionary, that will make up the weight island. 
+        the next thing you have to do is find the center of the island
+        then once you find the center you need to convert the key for each element to be the distance hash from the center point so that it becomes
+
+        {distance_from_center: weight}
+
+        then once you have that information stored you can use an empty_object to move the whole island on the target mesh and then calculate where the verteices should map to
+
+"""
+
 import bpy
 import mathutils
 
@@ -29,15 +53,32 @@ def get_mesh_from_armature(armature_name):
 
 
 #1) get the weights for each vertex in a vertex groups for a single bone 
-def estimate_target_island(distance_dict):
+def estimate_target_island(distance_dict, target_mesh, empty_loc, vertex_group_name):
     
+    target_mesh_data = target_mesh.data
+    vertex_group = target_mesh.vertex_groups.get(vertex_group_name)
+    # Loop through all vertices
+    for d in distance_dict:
+        #get the true location of the matching target vertex
+        #center - v = dist
+        #center - dist = v
+        target_estimate = empty_loc - d
+        min_distance = mathutils.Vector(float('inf'), float('inf'), float('inf'))
+        min_vertex = mathutils.Vector()
+        for v in target_mesh_data.vertices:
+            #what is the closest vertex to the target estimate
+            dist = v - target_estimate 
+            
+            abs_dist = mathutils.Vector(abs(dist.co[0]), abs(dist.co[1]), abs(dist.co[2]))
 
+            if abs_dist < min_distance:
+                min_distance = abs_dist
+                min_vertex = v
 
+        weight = distance_dict[d]
 
-#2) pick a central vertex in the vertex group to which all other vertices will translate/rotate in relation to 
-def get_center_of_surface_area():
-
-
+        vertex_group.add([min_vertex.index], weight, 'REPLACE')
+         
 
 def is_in_vertex_group(vert_index, vert_group):
       return vert_group.weight(vert_index) > 0
@@ -55,15 +96,16 @@ def find_center(vertex_island_dict):
     return center_point
 
 
-def distance_from_empty(empty_loc, vertex_island_dict):
-    center = empty_loc 
-    distance_dict = [center - v for v in vertex_island_dict:]
+def distance_from_center(center, vertex_island_dict):
+    distance_dict = {}
+    for v in vertex_island_dict:
+        distance_dict[center - v] = vertex_island_dict[v]
+
     return distance_dict
 
 
-
 #4) allow on mouse movement to translate the whole weight painting map for a bone
-def transfer_weights(source_armature_name, target_armature_name, source_mesh_name, target_mesh_name, empty_object):
+def remap_vertex_group(source_vertex_group, source_mesh_name, target_mesh_name, empty_object):
     vertex_island = {} 
 
 
@@ -72,81 +114,54 @@ def transfer_weights(source_armature_name, target_armature_name, source_mesh_nam
 
 
     #loop through source bones / target ones will be the same names
-    for source_vertex_group in bpy.data.objects[source_armature_name].pose.bones:
-        # make sure vertex group name is in mesh list of vertex groups
-        if source_vertex_group in bpy.data.objects[source_mesh_name].vertex_groups:
+    # make sure vertex group name is in mesh list of vertex groups
+    if source_vertex_group in bpy.data.objects[source_mesh_name].vertex_groups:
 
-            #first check if target_vertex_group already exists
-            target_vertex_group = bpy.data.objects[target_mesh_name].vertex_groups.get(source_vertex_group)
+        #first check if target_vertex_group already exists
+        target_vertex_group = bpy.data.objects[target_mesh_name].vertex_groups.get(source_vertex_group.name)
 
-            if target_vertex_group is None:
-                target_vertex_group = bpy.data.objects[target_mesh_name].vertex_groups.new(name=source_vertex_group)
-            
-            #go through source mesh vertices to get weights for each vertex in source vertex group
-            mesh_data = bpy.data.objects[source_mesh_name].data
-
-    
-            # Loop through all vertices
-            for v in mesh_data.vertices:
-                # Get the weight of the vertex in the source group
-                try:
-                    #check if the vertex is in the source vertex group
-                    # a single vertex can belong to multiple vertex groups
-                    if is_in_vertex_group(v.index, source_vertex_group):
-                        # Assign the weight to the target group
-                        weight = source_vertex_group.weight(v.index)
-                        vertex_island[v] = weight
-                        """
-                            May want to cache all of the weights somehow, then have a while loop run while you use mouse events to decide where to translate the weights stamp and then have a 
-
-                            key to both place the map and jump out of the while loop
+        if target_vertex_group is None:
+            target_vertex_group = bpy.data.objects[target_mesh_name].vertex_groups.new(name=source_vertex_group)
+        
+        #go through source mesh vertices to get weights for each vertex in source vertex group
+        mesh_data = bpy.data.objects[source_mesh_name].data
 
 
-                            Need to store two things:
-                                weight of original source vertex within original vertex group
-                                the position of the vertex 
-
-                            What data structure to store is best?
-                                for fast look up perhaps create a hash from the positional coordinates and use that as an id in a dictionary
-                                {"hash": weight}
-
-                                then once you store all of the non zero vertices in the vertex group into the dictionary, that will make up the weight island. 
-                                the next thing you have to do is find the center of the island
-                                then once you find the center you need to convert the key for each element to be the distance hash from the center point so that it becomes
-
-                                {distance_from_center: weight}
-
-                                then once you have that information stored you can use an empty_object to move the whole island on the target mesh and then calculate where the verteices should map to
-
-                        """
+        # Loop through all vertices to get all non zero weights and their vertex coorindates
+        for v in mesh_data.vertices:
+            # Get the weight of the vertex in the source group
+            try:
+                #check if the vertex is in the source vertex group
+                # a single vertex can belong to multiple vertex groups
+                if is_in_vertex_group(v.index, source_vertex_group):
+                    # Assign the weight to the target group
+                    weight = source_vertex_group.weight(v.index)
+                    vertex_island[v] = weight
 
 
-                except RuntimeError as e:
-                    print(e)
+            except RuntimeError as e:
+                print(e)
 
-            center_point = find_center(vertex_island)
-            
-            #change center point to where the object is
+        center_point = find_center(vertex_island)
 
-            empty_loc = empty_object.location
-            #convert all vertex keys to distance from center point
-            distance_dict = distance_from_empty(empty_loc, vertex_island)
-            
-            #this will estiamte the target island and change the weights of thVy
-            estimate_target_island(distance_dict)
+        #convert all vertex keys to distance from center point
+        distance_dict = distance_from_center(center_point, vertex_island)
+        
+        empty_loc = empty_object.location
 
-            if target_vertex:
-                target_vertex_group.add([target_vertex.index], weight, 'REPLACE')
+        #this will estiamte the target island and change the weights of them
+        estimate_target_island(distance_dict, target_mesh, empty_loc, source_vertex_group.name)
 
-            print(f"Vertex group weights transferred from {source_bone_name} to {target_bone_name}")
-        else:
-            print(f"Vertex group '{source_bone_name}' not found.")
+        if target_vertex:
+            target_vertex_group.add([target_vertex.index], weight, 'REPLACE')
+
+        print(f"source vertex group transferred to tareget mesh")
     else:
-        print("Source or target bone not found.")
+        print(f"Vertex group '{source_vertex_group}' not found.")
 
 
 
-# use an empty object to rotate and translate weight paint stamp
+# use an empty object to rotate and translate weight paint stamp!!!!
 
 
 
