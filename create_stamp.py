@@ -53,7 +53,7 @@ def get_mesh_from_armature(armature_name):
 
 
 #1) get the weights for each vertex in a vertex groups for a single bone 
-def estimate_target_island(distance_dict, target_mesh, empty_loc, vertex_group_name):
+def estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, vertex_group_name):
     
     target_mesh_data = target_mesh.data
     vertex_group = target_mesh.vertex_groups.get(vertex_group_name)
@@ -62,7 +62,7 @@ def estimate_target_island(distance_dict, target_mesh, empty_loc, vertex_group_n
         #get the true location of the matching target vertex
         #center - v = dist
         #center - dist = v
-        target_estimate = empty_loc - d
+        target_estimate = target_vertex_group_center - d
         min_distance = mathutils.Vector(float('inf'), float('inf'), float('inf'))
         min_vertex = mathutils.Vector()
         for v in target_mesh_data.vertices:
@@ -104,25 +104,50 @@ def distance_from_center(center, vertex_island_dict):
     return distance_dict
 
 
+#first get source bones distance from center of vertex group
+def distance_between_center_and_bone(source_bone, vertex_center):
+    if source_bone:
+        head_location = source_bone.head
+        distance = head_location - vertex_center
+        return distance
+    else:
+        return None
+        
+#then find that same location for the target mesh
+def find_target_vertex_group_center(distance_from_bone, target_bone):
+    if target_bone:
+        head_location = target_bone.head
+        vertex_group_center = head_location - distance_from_bone
+
+
 #4) allow on mouse movement to translate the whole weight painting map for a bone
-def remap_vertex_group(source_vertex_group, source_mesh_name, target_mesh_name, empty_object):
+def remap_vertex_group(source_vertex_group, source_armature, source_mesh_name, target_armature, target_mesh_name):
     vertex_island = {} 
 
 
     # Switch to object mode NOTE: need to figure out why I need to do this
     bpy.ops.object.mode_set(mode='OBJECT')
+    
+    source_armature = bpy.data.objects[source_armature]
+    source_bone = source_armature.pose.bones.get(source_vertex_group)
 
+    target_armature = bpy.data.objects[target_armature]
+    #target vertex group is the same name as the source vertex group
+    target_bone = source_armature.pose.bones.get(source_vertex_group)
 
     #loop through source bones / target ones will be the same names
     # make sure vertex group name is in mesh list of vertex groups
+    breakpoint()
+
     if source_vertex_group in bpy.data.objects[source_mesh_name].vertex_groups:
 
         #first check if target_vertex_group already exists
-        target_vertex_group = bpy.data.objects[target_mesh_name].vertex_groups.get(source_vertex_group.name)
+        target_vertex_group = bpy.data.objects[target_mesh_name].vertex_groups.get(source_vertex_group)
 
         if target_vertex_group is None:
             target_vertex_group = bpy.data.objects[target_mesh_name].vertex_groups.new(name=source_vertex_group)
         
+        breakpoint()
         #go through source mesh vertices to get weights for each vertex in source vertex group
         mesh_data = bpy.data.objects[source_mesh_name].data
 
@@ -142,16 +167,23 @@ def remap_vertex_group(source_vertex_group, source_mesh_name, target_mesh_name, 
                 print(e)
 
         center_point = find_center(vertex_island)
+        breakpoint()
+
+        #distance between source bone and center of vertex group
+        distance_from_bone = distance_between_center_and_bone(source_bone, center_point):
+        
+        #get the location of the center of the supposed target vertex group using the above distance from bone
+        target_vertex_group_center = find_target_vertex_group_center(distance_from_bone, target_bone)
 
         #convert all vertex keys to distance from center point
         distance_dict = distance_from_center(center_point, vertex_island)
-        
-        empty_loc = empty_object.location
-        
+        breakpoint()
+       
         #for now just make sure the faces are oriented in the same way and dont worry about rotating the target island based off the empty object
 
         #this will estiamte the target island and change the weights of them
-        estimate_target_island(distance_dict, target_mesh, empty_loc, source_vertex_group.name)
+        estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, source_vertex_group.name)
+        breakpoint()
 
         if target_vertex:
             target_vertex_group.add([target_vertex.index], weight, 'REPLACE')
@@ -160,12 +192,17 @@ def remap_vertex_group(source_vertex_group, source_mesh_name, target_mesh_name, 
     else:
         print(f"Vertex group '{source_vertex_group}' not found.")
 
+def get_vertex_groups(mesh_name):
 
+    vertex_groups = bpy.data.objects[mesh_name].vertex_groups
 
-# use an empty object to rotate and translate weight paint stamp!!!!
+    return vertex_groups
 
+def check_empty_groups(mesh_name):
+    vertex_groups = bpy.data.objects[mesh_name].vertex_groups
 
+source_mesh_name = "LOD_1_Group_0_Sub_3_esf_Head00"
+target_mesh_name = "LOD_1_Group_0_Sub_3_esf_Head.001"
 
-
-def rotate_weights():
-
+#for vg in vertex_groups:
+    #remap_vertex_group(vg, source_mesh_name, target_mesh_name, empty_object)
