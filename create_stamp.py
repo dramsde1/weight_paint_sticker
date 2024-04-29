@@ -62,14 +62,14 @@ def estimate_target_island(distance_dict, target_mesh, target_vertex_group_cente
         #center - v = dist
         #center - dist = v
         target_estimate = target_vertex_group_center - d
-        min_distance = mathutils.Vector(float('inf'), float('inf'), float('inf'))
+        min_distance = mathutils.Vector((float('inf'), float('inf'), float('inf')))
         min_vertex = mathutils.Vector()
-        breakpoint() 
+
         for v in target_mesh_data.vertices:
             #what is the closest vertex to the target estimate
-            dist = v - target_estimate 
+            dist = v.co - target_estimate 
             
-            abs_dist = mathutils.Vector(abs(dist.co[0]), abs(dist.co[1]), abs(dist.co[2]))
+            abs_dist = mathutils.Vector((abs(dist[0]), abs(dist[1]), abs(dist[2])))
 
             if abs_dist < min_distance:
                 min_distance = abs_dist
@@ -117,6 +117,10 @@ def find_target_vertex_group_center(distance_from_bone, target_bone):
     if target_bone:
         head_location = target_bone.head
         vertex_group_center = head_location - distance_from_bone
+        return vertex_group_center
+    else:
+        print("target bone is none")
+        return None
 
 
 # this function is meant to be used in a for loop, looping through all of the bones/vertex groups on an armature/meshG
@@ -187,7 +191,6 @@ def remap_vertex_group(source_vertex_group, source_armature_name, source_mesh_na
 
         #this will estiamte the target island and change the weights of them
         estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, source_vertex_group.name)
-        breakpoint()
 
         if target_vertex:
             target_vertex_group.add([target_vertex.index], weight, 'REPLACE')
