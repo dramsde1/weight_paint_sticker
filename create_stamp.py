@@ -192,8 +192,6 @@ def remap_vertex_group(source_vertex_group, source_armature_name, source_mesh_na
         #this will estiamte the target island and change the weights of them
         estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, source_vertex_group.name)
 
-        if target_vertex:
-            target_vertex_group.add([target_vertex.index], weight, 'REPLACE')
 
         print(f"source vertex group transferred to tareget mesh")
     else:
