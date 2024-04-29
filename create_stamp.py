@@ -54,7 +54,6 @@ def get_mesh_from_armature(armature_name):
 
 #1) get the weights for each vertex in a vertex groups for a single bone 
 def estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, vertex_group_name):
-    
     target_mesh_data = target_mesh.data
     vertex_group = target_mesh.vertex_groups.get(vertex_group_name)
     # Loop through all vertices
@@ -65,6 +64,7 @@ def estimate_target_island(distance_dict, target_mesh, target_vertex_group_cente
         target_estimate = target_vertex_group_center - d
         min_distance = mathutils.Vector(float('inf'), float('inf'), float('inf'))
         min_vertex = mathutils.Vector()
+        breakpoint() 
         for v in target_mesh_data.vertices:
             #what is the closest vertex to the target estimate
             dist = v - target_estimate 
@@ -86,21 +86,20 @@ def is_in_vertex_group(vert_index, vert_group):
 
 
 def find_center(vertex_island_dict):
-
     vertex_island = [v for v in vertex_island_dict]
     center_point = mathutils.Vector()
     for vertex in vertex_island:
-        center_point += vertex
+        center_point += vertex.co
     center_point /= len(vertex_island)
-
     return center_point
 
 
 def distance_from_center(center, vertex_island_dict):
     distance_dict = {}
     for v in vertex_island_dict:
-        distance_dict[center - v] = vertex_island_dict[v]
-
+        dist = center - v.co
+        weight = vertex_island_dict[v]
+        distance_dict[dist.freeze()] = weight
     return distance_dict
 
 
@@ -120,36 +119,40 @@ def find_target_vertex_group_center(distance_from_bone, target_bone):
         vertex_group_center = head_location - distance_from_bone
 
 
-#4) allow on mouse movement to translate the whole weight painting map for a bone
-def remap_vertex_group(source_vertex_group, source_armature, source_mesh_name, target_armature, target_mesh_name):
+# this function is meant to be used in a for loop, looping through all of the bones/vertex groups on an armature/meshG
+# for mods, the bone names should be the same for both armatures
+def remap_vertex_group(source_vertex_group, source_armature_name, source_mesh_name, target_armature_name, target_mesh_name):
     vertex_island = {} 
 
 
     # Switch to object mode NOTE: need to figure out why I need to do this
     bpy.ops.object.mode_set(mode='OBJECT')
     
-    source_armature = bpy.data.objects[source_armature]
-    source_bone = source_armature.pose.bones.get(source_vertex_group)
+    source_armature = bpy.data.objects[source_armature_name]
 
-    target_armature = bpy.data.objects[target_armature]
+    source_bone = source_armature.pose.bones.get(source_vertex_group.name)
+
+    target_armature = bpy.data.objects[target_armature_name]
     #target vertex group is the same name as the source vertex group
-    target_bone = source_armature.pose.bones.get(source_vertex_group)
+    target_bone = target_armature.pose.bones.get(source_vertex_group.name)
 
     #loop through source bones / target ones will be the same names
     # make sure vertex group name is in mesh list of vertex groups
-    breakpoint()
 
-    if source_vertex_group in bpy.data.objects[source_mesh_name].vertex_groups:
+    mesh_data = bpy.data.objects[source_mesh_name].data
+    target_mesh = bpy.data.objects[target_mesh_name]
+
+
+    if source_vertex_group.name in bpy.data.objects[source_mesh_name].vertex_groups:
 
         #first check if target_vertex_group already exists
-        target_vertex_group = bpy.data.objects[target_mesh_name].vertex_groups.get(source_vertex_group)
+        target_vertex_group = target_mesh.vertex_groups.get(source_vertex_group.name)
+
 
         if target_vertex_group is None:
-            target_vertex_group = bpy.data.objects[target_mesh_name].vertex_groups.new(name=source_vertex_group)
+            target_vertex_group = target_mesh.vertex_groups.new(name=source_vertex_group.name)
         
-        breakpoint()
         #go through source mesh vertices to get weights for each vertex in source vertex group
-        mesh_data = bpy.data.objects[source_mesh_name].data
 
 
         # Loop through all vertices to get all non zero weights and their vertex coordinates
@@ -159,25 +162,26 @@ def remap_vertex_group(source_vertex_group, source_armature, source_mesh_name, t
                 #check if the vertex is in the source vertex group
                 # a single vertex can belong to multiple vertex groups
                 if is_in_vertex_group(v.index, source_vertex_group):
+
                     # Assign the weight to the target group
                     weight = source_vertex_group.weight(v.index)
                     vertex_island[v] = weight
 
             except RuntimeError as e:
-                print(e)
+                #Error: Vertex not in group
+                continue
 
         center_point = find_center(vertex_island)
-        breakpoint()
 
         #distance between source bone and center of vertex group
-        distance_from_bone = distance_between_center_and_bone(source_bone, center_point):
+        distance_from_bone = distance_between_center_and_bone(source_bone, center_point)
         
         #get the location of the center of the supposed target vertex group using the above distance from bone
         target_vertex_group_center = find_target_vertex_group_center(distance_from_bone, target_bone)
 
+
         #convert all vertex keys to distance from center point
         distance_dict = distance_from_center(center_point, vertex_island)
-        breakpoint()
        
         #for now just make sure the faces are oriented in the same way and dont worry about rotating the target island based off the empty object
 
@@ -201,8 +205,13 @@ def get_vertex_groups(mesh_name):
 def check_empty_groups(mesh_name):
     vertex_groups = bpy.data.objects[mesh_name].vertex_groups
 
-source_mesh_name = "LOD_1_Group_0_Sub_3_esf_Head00"
-target_mesh_name = "LOD_1_Group_0_Sub_3_esf_Head.001"
+source_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head00"
+target_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head.001"
+source_armature = "Root.002"
+target_armature = "Root.001"
+vertex_groups = get_vertex_groups(source_mesh_name)
+for vg in vertex_groups:
+    remap_vertex_group(vg, source_armature, source_mesh_name, target_armature, target_mesh_name)
 
-#for vg in vertex_groups:
-    #remap_vertex_group(vg, source_mesh_name, target_mesh_name, empty_object)
+
+
