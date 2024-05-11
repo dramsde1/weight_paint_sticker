@@ -122,6 +122,42 @@ def find_target_vertex_group_center(distance_from_bone, target_bone):
         print("target bone is none")
         return None
 
+def organize_vertex_groups(source_mesh_name):
+    
+    vertex_groups = get_vertex_groups(source_mesh_name)
+    vertex_group_dict = {}
+
+    # Switch to object mode NOTE: need to figure out why I need to do this
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    mesh_data = bpy.data.objects[source_mesh_name].data
+
+
+    # Loop through all vertices to get all non zero weights and their vertex coordinates
+    for v in mesh_data.vertices:
+        # Get the weight of the vertex in the source group
+
+        for vg in vertex_groups:
+
+            source_vertex_group = vg
+
+            try:
+
+                if is_in_vertex_group(v.index, source_vertex_group):
+
+                    # Assign the weight to the target group
+                    weight = source_vertex_group.weight(v.index)
+                    #check if thats the name
+                    if source_vertex_group.name in vertex_group_dict:
+                        vertex_group_dict[source_vertex_group.name][v] = weight
+                    else:
+                        vertex_group_dict[source_vertex_group.name] = {}
+                        vertex_group_dict[source_vertex_group.name][v] = weight
+
+            except RuntimeError as e:
+                #Error: Vertex not in group
+                continue
+
 
 # this function is meant to be used in a for loop, looping through all of the bones/vertex groups on an armature/meshG
 # for mods, the bone names should be the same for both armatures
@@ -193,7 +229,7 @@ def remap_vertex_group(source_vertex_group, source_armature_name, source_mesh_na
         estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, source_vertex_group.name)
 
 
-        print(f"source vertex group transferred to tareget mesh")
+        print(f"source vertex group transferred to target mesh")
     else:
         print(f"Vertex group '{source_vertex_group}' not found.")
 
