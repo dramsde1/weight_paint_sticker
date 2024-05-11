@@ -1,45 +1,9 @@
-"""
-The assumption is that you are creating a stamp for the same bone on a duplicate of the same armature that is the parent of a different mesh. So the bone your transfering the stamp to should have the same name
-
-SETUP
-0) Pick the source and target armatures
-1) Assume the target armature is already parented to the target mesh
-
-GET WEIGHTS
-1) get the weights for each vertex in a vertex groups for a single bone 
-2) pick a central vertex in the vertex group to which all other vertices will translate/rotate in relation to 
-
-TRANSFER TO NEW ARMATURE
-3) move weights all at the same time to the target bone (retarget)
-4) allow on mouse movement to translate the whole weight painting map for a bone
-
-"""
-"""
-    May want to cache all of the weights somehow, then have a while loop run while you use mouse events to decide where to translate the weights stamp and then have a 
-
-    key to both place the map and jump out of the while loop
-
-
-    Need to store two things:
-        weight of original source vertex within original vertex group
-        the position of the vertex 
-
-    What data structure to store is best?
-        for fast look up perhaps create a hash from the positional coordinates and use that as an id in a dictionary
-        {"hash": weight}
-
-        then once you store all of the non zero vertices in the vertex group into the dictionary, that will make up the weight island. 
-        the next thing you have to do is find the center of the island
-        then once you find the center you need to convert the key for each element to be the distance hash from the center point so that it becomes
-
-        {distance_from_center: weight}
-
-        then once you have that information stored you can use an empty_object to move the whole island on the target mesh and then calculate where the verteices should map to
-
-"""
-
 import bpy
 import mathutils
+import site
+import pip
+
+#pip.main(['install', 'dask', '--target', site.USER_SITE])
 
 #get mesh from armature
 def get_mesh_from_armature(armature_name):
@@ -163,7 +127,7 @@ def organize_vertex_groups(source_mesh_name):
 
 # this function is meant to be used in a for loop, looping through all of the bones/vertex groups on an armature/meshG
 # for mods, the bone names should be the same for both armatures
-def remap_vertex_group(vertex_group_dictionaries, source_armature_name, target_armature_name, target_mesh_name):
+def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_armature_name, target_mesh_name):
 
     # Switch to object mode NOTE: need to figure out why I need to do this
     bpy.ops.object.mode_set(mode='OBJECT')
@@ -220,8 +184,11 @@ target_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head.001"
 source_armature = "Root.002"
 target_armature = "Root.001"
 vertex_groups = get_vertex_groups(source_mesh_name)
-for vg in vertex_groups:
-    remap_vertex_group(vg, source_armature, source_mesh_name, target_armature, target_mesh_name)
+
+
+vertex_group_dictionaries = organize_vertex_groups(source_mesh_name)
+remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_armature_name, target_mesh_name):
+
 
 
 
