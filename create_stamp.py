@@ -153,63 +153,34 @@ def organize_vertex_groups(source_mesh_name):
                     else:
                         vertex_group_dict[source_vertex_group.name] = {}
                         vertex_group_dict[source_vertex_group.name][v] = weight
-
+                
             except RuntimeError as e:
                 #Error: Vertex not in group
                 continue
+
+    return vertex_group_dict
 
 
 # this function is meant to be used in a for loop, looping through all of the bones/vertex groups on an armature/meshG
 # for mods, the bone names should be the same for both armatures
-def remap_vertex_group(source_vertex_group, source_armature_name, source_mesh_name, target_armature_name, target_mesh_name):
-    vertex_island = {} 
-
+def remap_vertex_group(vertex_group_dictionaries, source_armature_name, target_armature_name, target_mesh_name):
 
     # Switch to object mode NOTE: need to figure out why I need to do this
     bpy.ops.object.mode_set(mode='OBJECT')
-    
-    source_armature = bpy.data.objects[source_armature_name]
 
-    source_bone = source_armature.pose.bones.get(source_vertex_group.name)
-
-    target_armature = bpy.data.objects[target_armature_name]
-    #target vertex group is the same name as the source vertex group
-    target_bone = target_armature.pose.bones.get(source_vertex_group.name)
-
-    #loop through source bones / target ones will be the same names
-    # make sure vertex group name is in mesh list of vertex groups
-
-    mesh_data = bpy.data.objects[source_mesh_name].data
     target_mesh = bpy.data.objects[target_mesh_name]
 
+    for source_vertex_group_name in vertex_group_dictionaries:
 
-    if source_vertex_group.name in bpy.data.objects[source_mesh_name].vertex_groups:
+        vertex_island = vertex_group_dictionaries[source_vertex_group_name] 
 
-        #first check if target_vertex_group already exists
-        target_vertex_group = target_mesh.vertex_groups.get(source_vertex_group.name)
+        source_armature = bpy.data.objects[source_armature_name]
 
+        source_bone = source_armature.pose.bones.get(source_vertex_group_name)
 
-        if target_vertex_group is None:
-            target_vertex_group = target_mesh.vertex_groups.new(name=source_vertex_group.name)
-        
-        #go through source mesh vertices to get weights for each vertex in source vertex group
+        target_armature = bpy.data.objects[target_armature_name]
 
-
-        # Loop through all vertices to get all non zero weights and their vertex coordinates
-        for v in mesh_data.vertices:
-            # Get the weight of the vertex in the source group
-            try:
-                #check if the vertex is in the source vertex group
-                # a single vertex can belong to multiple vertex groups
-                if is_in_vertex_group(v.index, source_vertex_group):
-
-                    # Assign the weight to the target group
-                    weight = source_vertex_group.weight(v.index)
-                    vertex_island[v] = weight
-
-            except RuntimeError as e:
-                #Error: Vertex not in group
-                continue
+        target_bone = target_armature.pose.bones.get(source_vertex_group_name)
 
         center_point = find_center(vertex_island)
 
@@ -226,12 +197,14 @@ def remap_vertex_group(source_vertex_group, source_armature_name, source_mesh_na
         #for now just make sure the faces are oriented in the same way and dont worry about rotating the target island based off the empty object
 
         #this will estiamte the target island and change the weights of them
-        estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, source_vertex_group.name)
+        estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, source_vertex_group_name)
 
 
         print(f"source vertex group transferred to target mesh")
     else:
         print(f"Vertex group '{source_vertex_group}' not found.")
+
+
 
 def get_vertex_groups(mesh_name):
 
