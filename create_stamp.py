@@ -5,10 +5,15 @@ import pip
 
 #pip.main(['install', 'dask', '--target', site.USER_SITE])
 
+import dask
+from dask import delayed
+
+
 #1) get the weights for each vertex in a vertex groups for a single bone 
 def estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, vertex_group_name):
     target_mesh_data = target_mesh.data
     vertex_group = target_mesh.vertex_groups.get(vertex_group_name)
+    delayed_results = []
     # Loop through all vertices
     for d in distance_dict:
         #get the true location of the matching target vertex
@@ -18,6 +23,13 @@ def estimate_target_island(distance_dict, target_mesh, target_vertex_group_cente
         min_distance = mathutils.Vector((float('inf'), float('inf'), float('inf')))
         min_vertex = mathutils.Vector()
 
+        #call here
+        delayed_result = delayed(find_target_vertex)(distance_dict, target_mesh_data, target_estimate, min_distance, min_vertex)
+        delayed_results.append(delayed_result)
+
+    parallel_results = dask.compute(*delayed_results)
+
+def find_target_vertex(distance_dict, target_mesh_data, target_estimate, min_distance, min_vertex):
         for v in target_mesh_data.vertices:
             #what is the closest vertex to the target estimate
             dist = v.co - target_estimate 
@@ -29,9 +41,8 @@ def estimate_target_island(distance_dict, target_mesh, target_vertex_group_cente
                 min_vertex = v
 
         weight = distance_dict[d]
-
         vertex_group.add([min_vertex.index], weight, 'REPLACE')
-         
+
 
 def is_in_vertex_group(vert_index, vert_group):
       return vert_group.weight(vert_index) > 0
