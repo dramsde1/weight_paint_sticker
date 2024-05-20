@@ -5,17 +5,6 @@ import pip
 
 #pip.main(['install', 'dask', '--target', site.USER_SITE])
 
-#get mesh from armature
-def get_mesh_from_armature(armature_name):
-    armature = bpy.data.objects[armature_name]
-    modifiers = [modifier for modifier in armature.modifiers if modifier.type == "ARMATURE"]
-    mesh_object = modifiers[0].object
-    if mesh_object and mesh_object.type == 'MESH':
-        print("Mesh object associated with the armature:", mesh_object.name)
-        return mesh_object
-
-
-
 #1) get the weights for each vertex in a vertex groups for a single bone 
 def estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, vertex_group_name):
     target_mesh_data = target_mesh.data
@@ -46,7 +35,6 @@ def estimate_target_island(distance_dict, target_mesh, target_vertex_group_cente
 
 def is_in_vertex_group(vert_index, vert_group):
       return vert_group.weight(vert_index) > 0
-
 
 
 def find_center(vertex_island_dict):
@@ -163,11 +151,9 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
         #this will estiamte the target island and change the weights of them
         estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, source_vertex_group_name)
 
-
         print(f"source vertex group transferred to target mesh")
-    else:
-        print(f"Vertex group '{source_vertex_group}' not found.")
 
+    print(f"All source vertex groups transferred to target mesh")
 
 
 def get_vertex_groups(mesh_name):
@@ -179,15 +165,20 @@ def get_vertex_groups(mesh_name):
 def check_empty_groups(mesh_name):
     vertex_groups = bpy.data.objects[mesh_name].vertex_groups
 
+
+#source_mesh_name = "source"
+#target_mesh_name = "target"
+#source_armature_name = "source_arm"
+#target_armature_name = "target_arm"
+
 source_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head00"
 target_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head.001"
-source_armature = "Root.002"
-target_armature = "Root.001"
-vertex_groups = get_vertex_groups(source_mesh_name)
+source_armature_name = "Root.002"
+target_armature_name = "Root.001"
 
 
 vertex_group_dictionaries = organize_vertex_groups(source_mesh_name)
-remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_armature_name, target_mesh_name):
+remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_armature_name, target_mesh_name)
 
 
 
