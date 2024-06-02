@@ -4,10 +4,8 @@ import site
 import pip
 
 #pip.main(['install', 'dask', '--target', site.USER_SITE])
-
 import dask
 from dask import delayed
-
 
 #1) get the weights for each vertex in a vertex groups for a single bone 
 def estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, vertex_group_name):
@@ -24,24 +22,36 @@ def estimate_target_island(distance_dict, target_mesh, target_vertex_group_cente
         min_vertex = mathutils.Vector()
 
         #call here
-        delayed_result = delayed(find_target_vertex)(distance_dict, target_mesh_data, target_estimate, min_distance, min_vertex)
+        delayed_result = delayed(find_target_vertex)(distance_dict, target_mesh_data, target_estimate, min_distance, min_vertex, d, vertex_group)
         delayed_results.append(delayed_result)
 
     parallel_results = dask.compute(*delayed_results)
 
-def find_target_vertex(distance_dict, target_mesh_data, target_estimate, min_distance, min_vertex):
-        for v in target_mesh_data.vertices:
-            #what is the closest vertex to the target estimate
-            dist = v.co - target_estimate 
-            
-            abs_dist = mathutils.Vector((abs(dist[0]), abs(dist[1]), abs(dist[2])))
+def find_target_vertex(distance_dict, target_mesh_data, target_estimate, min_distance, min_vertex, d, vertex_group):
+    delayed_results = []
 
-            if abs_dist < min_distance:
-                min_distance = abs_dist
-                min_vertex = v
+    for v in target_mesh_data.vertices:
+        delayed_result = delayed(get_min_distance_helper)(target_estimate, min_distance, min_vertex, d, v)
+        delayed_results.append(delayed_result)
 
-        weight = distance_dict[d]
-        vertex_group.add([min_vertex.index], weight, 'REPLACE')
+    parallel_results = dask.compute(*delayed_results)
+    min_tuple = min(parallel_results, key=lambda x: x[1])
+    
+    min_vertex = min_tuple[0]
+    weight = distance_dict[d]
+    vertex_group.add([min_vertex.index], weight, 'REPLACE')
+
+def get_min_distance_helper(target_estimate, min_distance, min_vertex, d, v):
+    #what is the closest vertex to the target estimate
+    dist = v.co - target_estimate 
+    
+    abs_dist = mathutils.Vector((abs(dist[0]), abs(dist[1]), abs(dist[2])))
+
+    if abs_dist < min_distance:
+        min_distance = abs_dist
+        min_vertex = v
+
+    return (min_vertex, min_distance)
 
 
 def is_in_vertex_group(vert_index, vert_group):
@@ -177,15 +187,15 @@ def check_empty_groups(mesh_name):
     vertex_groups = bpy.data.objects[mesh_name].vertex_groups
 
 
-#source_mesh_name = "source"
-#target_mesh_name = "target"
-#source_armature_name = "source_arm"
-#target_armature_name = "target_arm"
+source_mesh_name = "source"
+target_mesh_name = "target"
+source_armature_name = "source_arm"
+target_armature_name = "target_arm"
 
-source_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head00"
-target_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head.001"
-source_armature_name = "Root.002"
-target_armature_name = "Root.001"
+#source_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head00"
+#target_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head.001"
+#source_armature_name = "Root.002"
+#target_armature_name = "Root.001"
 
 
 vertex_group_dictionaries = organize_vertex_groups(source_mesh_name)
