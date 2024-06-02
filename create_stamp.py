@@ -38,6 +38,7 @@ def find_target_vertex(distance_dict, target_mesh_data, target_estimate, min_dis
     min_tuple = min(parallel_results, key=lambda x: x[1])
     
     min_vertex = min_tuple[0]
+
     weight = distance_dict[d]
     vertex_group.add([min_vertex.index], weight, 'REPLACE')
 
