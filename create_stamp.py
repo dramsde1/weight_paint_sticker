@@ -106,33 +106,44 @@ def organize_vertex_groups(source_mesh_name):
 
     mesh_data = bpy.data.objects[source_mesh_name].data
 
-
     # Loop through all vertices to get all non zero weights and their vertex coordinates
     for v in mesh_data.vertices:
         # Get the weight of the vertex in the source group
-
+        delayed_results = [] 
         for vg in vertex_groups:
+            delayed_result = delayed(organize_vertex_group_helper)(vg, vertex_group_dict, v)
+            delayed_results.append(delayed_result)
 
-            source_vertex_group = vg
-
-            try:
-
-                if is_in_vertex_group(v.index, source_vertex_group):
-
-                    # Assign the weight to the target group
-                    weight = source_vertex_group.weight(v.index)
-                    #check if thats the name
-                    if source_vertex_group.name in vertex_group_dict:
-                        vertex_group_dict[source_vertex_group.name][v] = weight
-                    else:
-                        vertex_group_dict[source_vertex_group.name] = {}
-                        vertex_group_dict[source_vertex_group.name][v] = weight
-                
-            except RuntimeError as e:
-                #Error: Vertex not in group
-                continue
+        parallel_results = dask.compute(*delayed_results)
+        for i in parallel_results:
+            vertex_group_dict.update(i) 
 
     return vertex_group_dict
+
+
+def organize_vertex_group_helper(vg, vertex_group_dict, v):
+    source_vertex_group = vg
+
+    try:
+
+        if is_in_vertex_group(v.index, source_vertex_group):
+
+            # Assign the weight to the target group
+            weight = source_vertex_group.weight(v.index)
+            #check if thats the name
+            if source_vertex_group.name in vertex_group_dict:
+                vertex_group_dict[source_vertex_group.name][v] = weight
+            else:
+                vertex_group_dict[source_vertex_group.name] = {}
+                vertex_group_dict[source_vertex_group.name][v] = weight
+
+        return vertex_group_dict
+
+    except RuntimeError as e:
+        #Error: Vertex not in group
+        print(e)
+        return {}
+
 
 
 # this function is meant to be used in a for loop, looping through all of the bones/vertex groups on an armature/meshG
