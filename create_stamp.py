@@ -103,7 +103,7 @@ def organize_vertex_groups(source_mesh_name):
     # Loop through all vertices to get all non zero weights and their vertex coordinates
     for v in mesh_data.vertices:
         # Get the weight of the vertex in the source group
-
+        #add Dash here
         for vg in vertex_groups:
 
             source_vertex_group = vg
