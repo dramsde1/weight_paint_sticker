@@ -4,21 +4,37 @@ import site
 import pip
 
 #pip.main(['install', 'dask', '--target', site.USER_SITE])
+import bpy
+import bmesh
+from mathutils.bvhtree import BVHTree
+from mathutils import Vector
+
 
 #1) get the weights for each vertex in a vertex groups for a single bone 
-def estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, vertex_group_name):
+def estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, vertex_group_name, find_radius):
     target_mesh_data = target_mesh.data
     vertex_group = target_mesh.vertex_groups.get(vertex_group_name)
+    
+    #get bvh tree
+    coords = [v.co for v in target_mesh_data.vertices]
+    bvh_tree = BVHTree.FromPoints(coords)
+
     # Loop through all vertices
     for d in distance_dict:
+        #initialize min distance and min vertex
+        min_distance = mathutils.Vector((float('inf'), float('inf'), float('inf')))
+        min_vertex = mathutils.Vector()
+
         #get the true location of the matching target vertex
         #center - v = dist
         #center - dist = v
         target_estimate = target_vertex_group_center - d
-        min_distance = mathutils.Vector((float('inf'), float('inf'), float('inf')))
-        min_vertex = mathutils.Vector()
 
-        for v in target_mesh_data.vertices:
+        # Find vertices within the radius
+        found_verts = bvh_tree.find_range(target_estimate, find_radius)
+        # Select vertices within the radius
+        for v in found_verts:
+            #look for matching vert
             #what is the closest vertex to the target estimate
             dist = v.co - target_estimate 
             
@@ -29,7 +45,6 @@ def estimate_target_island(distance_dict, target_mesh, target_vertex_group_cente
                 min_vertex = v
 
         weight = distance_dict[d]
-
         vertex_group.add([min_vertex.index], weight, 'REPLACE')
          
 
@@ -149,7 +164,7 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
         #for now just make sure the faces are oriented in the same way and dont worry about rotating the target island based off the empty object
 
         #this will estiamte the target island and change the weights of them
-        estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, source_vertex_group_name)
+        estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, source_vertex_group_name, 2)
 
         print(f"source vertex group transferred to target mesh")
 
