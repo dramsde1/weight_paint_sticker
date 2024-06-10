@@ -14,38 +14,29 @@ from mathutils import Vector
 def estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, vertex_group_name, find_radius):
     target_mesh_data = target_mesh.data
     vertex_group = target_mesh.vertex_groups.get(vertex_group_name)
-    
-    #get bvh tree
-    coords = [v.co for v in target_mesh_data.vertices]
-    bvh_tree = BVHTree.FromPoints(coords)
+   
+    # Create a BMesh from the mesh data
+    bm = bmesh.new()
+    bm.from_mesh(target_mesh_data)
+
+    # Create the BVH tree from the BMesh
+    bvh_tree = BVHTree.FromBMesh(bm, epsilon=0.0)
 
     # Loop through all vertices
     for d in distance_dict:
         #initialize min distance and min vertex
-        min_distance = mathutils.Vector((float('inf'), float('inf'), float('inf')))
-        min_vertex = mathutils.Vector()
-
         #get the true location of the matching target vertex
         #center - v = dist
         #center - dist = v
         target_estimate = target_vertex_group_center - d
 
-        # Find vertices within the radius
-        found_verts = bvh_tree.find_range(target_estimate, find_radius)
-        # Select vertices within the radius
-        for v in found_verts:
-            #look for matching vert
-            #what is the closest vertex to the target estimate
-            dist = v.co - target_estimate 
-            
-            abs_dist = mathutils.Vector((abs(dist[0]), abs(dist[1]), abs(dist[2])))
-
-            if abs_dist < min_distance:
-                min_distance = abs_dist
-                min_vertex = v
-
+        # Find vertex within the radius
+        v_tup = bvh_tree.find_nearest(target_estimate, find_radius)
+        #(Vector location, Vector normal, int index, float distance),
+        breakpoint()
+        index = v_tup[2] #int
         weight = distance_dict[d]
-        vertex_group.add([min_vertex.index], weight, 'REPLACE')
+        vertex_group.add([index], weight, 'REPLACE')
          
 
 def is_in_vertex_group(vert_index, vert_group):
@@ -103,9 +94,6 @@ def organize_vertex_groups(source_mesh_name):
     # Loop through all vertices to get all non zero weights and their vertex coordinates
     for v in mesh_data.vertices:
         # Get the weight of the vertex in the source group
-        #add Dash here
-
-
         for vg in vertex_groups:
 
             source_vertex_group = vg
@@ -183,15 +171,15 @@ def check_empty_groups(mesh_name):
     vertex_groups = bpy.data.objects[mesh_name].vertex_groups
 
 
-#source_mesh_name = "source"
-#target_mesh_name = "target"
-#source_armature_name = "source_arm"
-#target_armature_name = "target_arm"
+source_mesh_name = "source"
+target_mesh_name = "target"
+source_armature_name = "source_arm"
+target_armature_name = "target_arm"
 
-source_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head00"
-target_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head.001"
-source_armature_name = "Root.002"
-target_armature_name = "Root.001"
+#source_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head00"
+#target_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head.001"
+#source_armature_name = "Root.002"
+#target_armature_name = "Root.001"
 
 
 vertex_group_dictionaries = organize_vertex_groups(source_mesh_name)
