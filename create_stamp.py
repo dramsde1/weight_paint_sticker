@@ -15,12 +15,11 @@ def estimate_target_island(distance_dict, target_mesh, target_vertex_group_cente
     target_mesh_data = target_mesh.data
     vertex_group = target_mesh.vertex_groups.get(vertex_group_name)
    
-    # Create a BMesh from the mesh data
-    bm = bmesh.new()
-    bm.from_mesh(target_mesh_data)
-
-    # Create the BVH tree from the BMesh
-    bvh_tree = BVHTree.FromBMesh(bm, epsilon=0.0)
+    size = len(target_mesh_data.vertices)
+    kd = mathutils.kdtree.KDTree(size)
+    for i, v in enumerate(target_mesh_data.vertices):
+        kd.insert(v.co, i)
+    kd.balance()
 
     # Loop through all vertices
     for d in distance_dict:
@@ -29,12 +28,8 @@ def estimate_target_island(distance_dict, target_mesh, target_vertex_group_cente
         #center - v = dist
         #center - dist = v
         target_estimate = target_vertex_group_center - d
-
-        # Find vertex within the radius
-        v_tup = bvh_tree.find_nearest(target_estimate, find_radius)
-        #(Vector location, Vector normal, int index, float distance),
-        breakpoint()
-        index = v_tup[2] #int
+        # Find the closest point to the center
+        co, index, dist = kd.find(target_estimate)
         weight = distance_dict[d]
         vertex_group.add([index], weight, 'REPLACE')
          
