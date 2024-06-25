@@ -11,7 +11,7 @@ from mathutils import Vector
 
 
 #1) get the weights for each vertex in a vertex groups for a single bone 
-def estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, vertex_group_name, find_radius):
+def estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, vertex_group_name):
     target_mesh_data = target_mesh.data
     vertex_group = target_mesh.vertex_groups.get(vertex_group_name)
    
@@ -123,37 +123,38 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
     target_mesh = bpy.data.objects[target_mesh_name]
 
     for source_vertex_group_name in vertex_group_dictionaries:
+        if source_vertex_group_name != "L_Ear":
+            vertex_island = vertex_group_dictionaries[source_vertex_group_name] 
+            source_armature = bpy.data.objects[source_armature_name]
+            source_bone = source_armature.pose.bones.get(source_vertex_group_name)
+            target_armature = bpy.data.objects[target_armature_name]
+            target_bone = target_armature.pose.bones.get(source_vertex_group_name)
+            center_point = find_center(vertex_island)
+            #distance between source bone and center of vertex group
+            distance_from_bone = distance_between_center_and_bone(source_bone, center_point)
+            #get the location of the center of the supposed target vertex group using the above distance from bone
+            target_vertex_group_center = find_target_vertex_group_center(distance_from_bone, target_bone)
 
-        vertex_island = vertex_group_dictionaries[source_vertex_group_name] 
+            #TEST
+            mark_location(target_vertex_group_center)
+            breakpoint()
+            #TEST
 
-        source_armature = bpy.data.objects[source_armature_name]
+            #convert all vertex keys to distance from center point
+            distance_dict = distance_from_center(center_point, vertex_island)
+            #for now just make sure the faces are oriented in the same way and dont worry about rotating the target island based off the empty object
+            #this will estiamte the target island and change the weights of them
+            estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, source_vertex_group_name)
 
-        source_bone = source_armature.pose.bones.get(source_vertex_group_name)
-
-        target_armature = bpy.data.objects[target_armature_name]
-
-        target_bone = target_armature.pose.bones.get(source_vertex_group_name)
-
-        center_point = find_center(vertex_island)
-
-        #distance between source bone and center of vertex group
-        distance_from_bone = distance_between_center_and_bone(source_bone, center_point)
-        
-        #get the location of the center of the supposed target vertex group using the above distance from bone
-        target_vertex_group_center = find_target_vertex_group_center(distance_from_bone, target_bone)
-
-
-        #convert all vertex keys to distance from center point
-        distance_dict = distance_from_center(center_point, vertex_island)
-       
-        #for now just make sure the faces are oriented in the same way and dont worry about rotating the target island based off the empty object
-
-        #this will estiamte the target island and change the weights of them
-        estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, source_vertex_group_name, 2)
-
-        print(f"source vertex group transferred to target mesh")
+            print(f"source vertex group transferred to target mesh")
 
     print(f"All source vertex groups transferred to target mesh")
+
+
+#testing function to select vertices
+def mark_location(vertex):
+    bpy.ops.object.empty_add(type='PLAIN_AXES', location=vertex)
+
 
 
 def get_vertex_groups(mesh_name):
@@ -166,15 +167,20 @@ def check_empty_groups(mesh_name):
     vertex_groups = bpy.data.objects[mesh_name].vertex_groups
 
 
-source_mesh_name = "source"
-target_mesh_name = "target"
-source_armature_name = "source_arm"
-target_armature_name = "target_arm"
+#source_mesh_name = "source"
+#target_mesh_name = "target"
+#source_armature_name = "source_arm"
+#target_armature_name = "target_arm"
 
 #source_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head00"
 #target_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head.001"
 #source_armature_name = "Root.002"
 #target_armature_name = "Root.001"
+
+source_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head00"
+target_mesh_name = "Cube"
+source_armature_name = "Root.002"
+target_armature_name = "Root.001"
 
 
 vertex_group_dictionaries = organize_vertex_groups(source_mesh_name)
