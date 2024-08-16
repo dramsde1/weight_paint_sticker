@@ -137,6 +137,7 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
 
             #TEST
             mark_location(target_vertex_group_center)
+            select_vertex_group(source_vertex_group_name)
             breakpoint()
             #TEST
 
@@ -156,15 +157,40 @@ def mark_location(vertex):
     bpy.ops.object.empty_add(type='PLAIN_AXES', location=vertex)
 
 
-
 def get_vertex_groups(mesh_name):
-
     vertex_groups = bpy.data.objects[mesh_name].vertex_groups
-
     return vertex_groups
 
 def check_empty_groups(mesh_name):
     vertex_groups = bpy.data.objects[mesh_name].vertex_groups
+
+def select_vertex_group(group_name):
+    # Ensure we're in Edit Mode
+    if bpy.context.object.mode != 'EDIT':
+        bpy.ops.object.mode_set(mode='EDIT')
+    # Switch to Vertex Selection Mode
+    bpy.ops.mesh.select_mode(type='VERT')
+    # Get the active object (ensure it is a mesh)
+    obj = bpy.context.object
+    # Ensure the object is in Object Mode to modify vertex groups
+    bpy.ops.object.mode_set(mode='OBJECT')
+    # Get the vertex group
+    group = obj.vertex_groups.get(group_name)
+    if group:
+        # Deselect all vertices first
+        for v in obj.data.vertices:
+            v.select = False
+        # Iterate through vertices and select those in the vertex group
+        for v in obj.data.vertices:
+            # Check if the vertex is in the group
+            for g in v.groups:
+                if g.group == group.index:
+                    v.select = True
+                    break
+        # Return to Edit Mode
+        bpy.ops.object.mode_set(mode='EDIT')
+    else:
+        print(f"Vertex group '{group_name}' not found.")
 
 
 #source_mesh_name = "source"
