@@ -141,10 +141,11 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
 
             source_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head00"
             mesh = bpy.data.objects[source_mesh_name]
-
+            distance_threshold = 100
             #select_vertex_group(bpy.data.objects[source_mesh_name], source_vertex_group_name, vertex_group_dictionaries)
             components = get_connected_components(mesh, vertex_group_dictionaries, source_vertex_group_name)
-            select_component(mesh, components[0])
+            in_range_components = get_components_in_range(components, distance_threshold)
+            select_component(mesh, [v for c in in_range_components for v in c])
             breakpoint()
             #TEST
 
@@ -253,26 +254,38 @@ def get_connected_components(mesh, vertex_group_dict, group_name, selected_only=
     return connected_components
 
 def get_components_in_range(connected_components, distance_threshold):
-    flattened_components = [item for sublist in connected_components for item in sublist]
-    size = len(flattened_components)
-    kd = mathutils.kdtree.KDTree(size)
-    for v in flattened_components:
-        kd.insert(v.co, v.index)
-    kd.balance()
+    # Precompute coordinates for all components
+    coordinates = [[a.co for a in component] for component in connected_components]
 
+    # Create KDTree for each component
+    kdtree_list = []
+    for component in coordinates:
+        kd = mathutils.kdtree.KDTree(len(component))
+        for i, point in enumerate(component):
+            kd.insert(point, i)
+        kd.balance()
+        kdtree_list.append(kd)
 
-    co, index, dist = kd.find(target_estimate)
+    in_range_components = []
+    
+    # Compare each pair of components
+    for i, tree_a in enumerate(kdtree_list):
+        for j in range(i + 1, len(kdtree_list)):
+            tree_b = kdtree_list[j]
 
-    distant_components = []
-    # Compare distances between components
-    for i, component_a in enumerate(connected_components):
-        for component_b in connected_components[i+1:]:
-            #min_distance = min((a.co - b.co).length for a in component_a for b in component_b)
-            min_distance = min(dist )
-            
-            # If the distance between two components is greater than the threshold
-            if min_distance > distance_threshold:
-                distant_components.append((component_a, component_b))
+            min_distance = float('inf')  # Initialize with a large value
+
+            # Iterate through all points in tree_a and find the closest point in tree_b
+            for point in coordinates[i]:
+                co, index, dist = tree_b.find(point)  # Find nearest point in tree_b
+                if dist < min_distance:
+                    min_distance = dist
+
+            if min_distance < distance_threshold:
+                in_range_components.append(coordinates[i])
+
+    return in_range_components
+
 
 
 #source_mesh_name = "source"
