@@ -81,45 +81,30 @@ def organize_vertex_groups(source_mesh_name):
     vertex_groups = get_vertex_groups(source_mesh_name)
     vertex_group_dict = {}
 
-    # Switch to object mode NOTE: need to figure out why I need to do this
-    #bpy.ops.object.mode_set(mode='OBJECT')
-
     mesh_data = bpy.data.objects[source_mesh_name].data
-
 
     # Loop through all vertices to get all non zero weights and their vertex coordinates
     for v in mesh_data.vertices:
-        # Get the weight of the vertex in the source group
         for vg in vertex_groups:
-
             source_vertex_group = vg
-
             try:
-
                 if is_in_vertex_group(v.index, source_vertex_group):
-
                     # Assign the weight to the target group
                     weight = source_vertex_group.weight(v.index)
-                    #check if thats the name
                     if source_vertex_group.name in vertex_group_dict:
                         vertex_group_dict[source_vertex_group.name][v] = weight
                     else:
                         vertex_group_dict[source_vertex_group.name] = {}
                         vertex_group_dict[source_vertex_group.name][v] = weight
-                
             except RuntimeError as e:
                 #Error: Vertex not in group
                 continue
-
     return vertex_group_dict
 
 
 # this function is meant to be used in a for loop, looping through all of the bones/vertex groups on an armature/meshG
 # for mods, the bone names should be the same for both armatures
 def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_armature_name, target_mesh_name):
-
-    # Switch to object mode NOTE: need to figure out why I need to do this
-    #bpy.ops.object.mode_set(mode='OBJECT')
 
     target_mesh = bpy.data.objects[target_mesh_name]
 
@@ -151,8 +136,6 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
 
             #convert all vertex keys to distance from center point
             distance_dict = distance_from_center(center_point, vertex_island)
-            #for now just make sure the faces are oriented in the same way and dont worry about rotating the target island based off the empty object
-            #this will estiamte the target island and change the weights of them
             estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, source_vertex_group_name)
 
             print(f"source vertex group transferred to target mesh")
@@ -272,15 +255,12 @@ def get_components_in_range(connected_components, distance_threshold):
     for i, tree_a in enumerate(kdtree_list):
         for j in range(i + 1, len(kdtree_list)):
             tree_b = kdtree_list[j]
-
             min_distance = float('inf')  # Initialize with a large value
-
             # Iterate through all points in tree_a and find the closest point in tree_b
             for point in coordinates[i]:
                 co, index, dist = tree_b.find(point)  # Find nearest point in tree_b
                 if dist < min_distance:
                     min_distance = dist
-
             if min_distance < distance_threshold:
                 in_range_components.append(coordinates[i])
 
