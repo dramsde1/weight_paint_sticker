@@ -133,7 +133,6 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
             select_component(mesh, [v for c in in_range_components for v in c])
             breakpoint()
             #TEST
-
             #convert all vertex keys to distance from center point
             distance_dict = distance_from_center(center_point, vertex_island)
             estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, source_vertex_group_name)
