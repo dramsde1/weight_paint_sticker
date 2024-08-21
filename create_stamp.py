@@ -8,6 +8,7 @@ import bpy
 import bmesh
 from mathutils.bvhtree import BVHTree
 from mathutils import Vector
+from collections import defaultdict, deque
 
 
 #1) get the weights for each vertex in a vertex groups for a single bone 
@@ -81,7 +82,7 @@ def organize_vertex_groups(source_mesh_name):
     vertex_group_dict = {}
 
     # Switch to object mode NOTE: need to figure out why I need to do this
-    bpy.ops.object.mode_set(mode='OBJECT')
+    #bpy.ops.object.mode_set(mode='OBJECT')
 
     mesh_data = bpy.data.objects[source_mesh_name].data
 
@@ -118,7 +119,7 @@ def organize_vertex_groups(source_mesh_name):
 def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_armature_name, target_mesh_name):
 
     # Switch to object mode NOTE: need to figure out why I need to do this
-    bpy.ops.object.mode_set(mode='OBJECT')
+    #bpy.ops.object.mode_set(mode='OBJECT')
 
     target_mesh = bpy.data.objects[target_mesh_name]
 
@@ -137,7 +138,13 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
 
             #TEST
             mark_location(target_vertex_group_center)
-            select_vertex_group(source_vertex_group_name)
+
+            source_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head00"
+            mesh = bpy.data.objects[source_mesh_name]
+
+            #select_vertex_group(bpy.data.objects[source_mesh_name], source_vertex_group_name, vertex_group_dictionaries)
+            components = get_connected_components(mesh, vertex_group_dictionaries, source_vertex_group_name)
+            select_component(mesh, components[0])
             breakpoint()
             #TEST
 
@@ -164,33 +171,108 @@ def get_vertex_groups(mesh_name):
 def check_empty_groups(mesh_name):
     vertex_groups = bpy.data.objects[mesh_name].vertex_groups
 
-def select_vertex_group(group_name):
+def select_vertex_group(mesh, group_name, vertex_group_dict):
+    # Deselect all objects and select mesh
+     # Select the object
+    mesh.select_set(True)
+    # Optionally, make the object the active object
+    bpy.context.view_layer.objects.active = mesh
+
     # Ensure we're in Edit Mode
     if bpy.context.object.mode != 'EDIT':
-        bpy.ops.object.mode_set(mode='EDIT')
+        #bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.object.editmode_toggle()
+
     # Switch to Vertex Selection Mode
     bpy.ops.mesh.select_mode(type='VERT')
-    # Get the active object (ensure it is a mesh)
-    obj = bpy.context.object
-    # Ensure the object is in Object Mode to modify vertex groups
-    bpy.ops.object.mode_set(mode='OBJECT')
-    # Get the vertex group
-    group = obj.vertex_groups.get(group_name)
-    if group:
-        # Deselect all vertices first
-        for v in obj.data.vertices:
-            v.select = False
-        # Iterate through vertices and select those in the vertex group
-        for v in obj.data.vertices:
-            # Check if the vertex is in the group
-            for g in v.groups:
-                if g.group == group.index:
-                    v.select = True
-                    break
-        # Return to Edit Mode
-        bpy.ops.object.mode_set(mode='EDIT')
-    else:
-        print(f"Vertex group '{group_name}' not found.")
+    group_verts = list(vertex_group_dict[group_name].keys())
+    bpy.ops.object.mode_set(mode = 'OBJECT')
+    mesh = bpy.context.active_object
+    bpy.ops.object.mode_set(mode = 'EDIT') 
+    bpy.ops.mesh.select_mode(type="VERT")
+    bpy.ops.mesh.select_all(action = 'DESELECT')
+    bpy.ops.object.mode_set(mode = 'OBJECT')
+    for v in group_verts:
+        v.select = True
+    bpy.ops.object.mode_set(mode = 'EDIT') 
+
+
+def select_component(mesh, component):
+    # Deselect all objects and select mesh
+     # Select the object
+    mesh.select_set(True)
+    # Optionally, make the object the active object
+    bpy.context.view_layer.objects.active = mesh
+    # Ensure we're in Edit Mode
+    if bpy.context.object.mode != 'EDIT':
+        #bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.object.editmode_toggle()
+    # Switch to Vertex Selection Mode
+    bpy.ops.mesh.select_mode(type='VERT')
+    bpy.ops.object.mode_set(mode = 'OBJECT')
+    mesh = bpy.context.active_object
+    bpy.ops.object.mode_set(mode = 'EDIT') 
+    bpy.ops.mesh.select_mode(type="VERT")
+    bpy.ops.mesh.select_all(action = 'DESELECT')
+    bpy.ops.object.mode_set(mode = 'OBJECT')
+
+    for i in component:
+        vertex = mesh.data.vertices[i]
+        vertex.select = True
+
+    bpy.ops.object.mode_set(mode = 'EDIT') 
+
+def bfs(start_vertex, visited, adjacency_list):
+    queue = deque([start_vertex])
+    connected_component = []
+    while queue:
+        current_vertex = queue.popleft()
+        if current_vertex not in visited:
+            visited.add(current_vertex)
+            connected_component.append(current_vertex)
+            queue.extend(adjacency_list[current_vertex])
+    return connected_component, visited
+
+def get_connected_components(mesh, vertex_group_dict, group_name, selected_only=False):
+    group_verts = list(vertex_group_dict[group_name].keys())
+    vertex_indices = [v.index for v in group_verts]
+    adjacency_list = defaultdict(list)
+    for edge in mesh.data.edges:
+        v1, v2 = edge.vertices
+        if v1 in vertex_indices and v2 in vertex_indices:
+            adjacency_list[v1].append(v2)
+            adjacency_list[v2].append(v1)
+
+    # Find all connected components
+    visited = set()
+    connected_components = []
+    for vertex_index in vertex_indices:
+        if vertex_index not in visited:
+            component, visited = bfs(vertex_index, visited, adjacency_list)
+            connected_components.append(component)
+    return connected_components
+
+def get_components_in_range(connected_components, distance_threshold):
+    flattened_components = [item for sublist in connected_components for item in sublist]
+    size = len(flattened_components)
+    kd = mathutils.kdtree.KDTree(size)
+    for v in flattened_components:
+        kd.insert(v.co, v.index)
+    kd.balance()
+
+
+    co, index, dist = kd.find(target_estimate)
+
+    distant_components = []
+    # Compare distances between components
+    for i, component_a in enumerate(connected_components):
+        for component_b in connected_components[i+1:]:
+            #min_distance = min((a.co - b.co).length for a in component_a for b in component_b)
+            min_distance = min(dist )
+            
+            # If the distance between two components is greater than the threshold
+            if min_distance > distance_threshold:
+                distant_components.append((component_a, component_b))
 
 
 #source_mesh_name = "source"
