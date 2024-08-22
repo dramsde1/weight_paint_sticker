@@ -39,13 +39,27 @@ def is_in_vertex_group(vert_index, vert_group):
       return vert_group.weight(vert_index) > 0
 
 
-def find_center(vertex_island_dict):
-    vertex_island = [v for v in vertex_island_dict]
-    center_point = mathutils.Vector()
-    for vertex in vertex_island:
-        center_point += vertex.co
-    center_point /= len(vertex_island)
-    return center_point
+def find_center(vertex_group_name, mesh):
+    context = bpy.context
+    ob = mesh
+    bpy.ops.object.empty_add(location=(0, 0, 0))
+    mt = context.object
+    mt.name = f"{ob.name}_{vertex_group_name}"
+    cl = mt.constraints.new('COPY_LOCATION')
+    cl.target = ob
+    cl.subtarget = vertex_group_name
+    #To go to any next step that requires the empties to be at the constrained locations throw in a scene update to ensure matrices etc are up to date.
+    dg = context.evaluated_depsgraph_get()
+    dg.update()
+    #get global location
+    loc = mt.matrix_world.translation # global location of emtpy
+    # remove the mt
+    bpy.data.objects.remove(mt)
+    return loc
+
+
+
+
 
 
 def distance_from_center(center, vertex_island_dict):
@@ -116,7 +130,9 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
             source_bone = source_armature.pose.bones.get(source_vertex_group_name)
             target_armature = bpy.data.objects[target_armature_name]
             target_bone = target_armature.pose.bones.get(source_vertex_group_name)
-            center_point = find_center(vertex_island[0])
+            center_point = find_center(source_vertex_group_name, source_mesh)
+            #mark_location(center_point)
+            breakpoint()
             #distance between source bone and center of vertex group
             distance_from_bone = distance_between_center_and_bone(source_bone, center_point)
             #get the location of the center of the supposed target vertex group using the above distance from bone
