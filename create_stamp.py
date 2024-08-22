@@ -104,37 +104,37 @@ def organize_vertex_groups(source_mesh_name):
 
 # this function is meant to be used in a for loop, looping through all of the bones/vertex groups on an armature/meshG
 # for mods, the bone names should be the same for both armatures
-def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_armature_name, target_mesh_name):
+def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_armature_name, source_mesh_name, target_mesh_name):
 
     target_mesh = bpy.data.objects[target_mesh_name]
-
+    source_mesh = bpy.data.objects[source_mesh_name]
     for source_vertex_group_name in vertex_group_dictionaries:
         if source_vertex_group_name != "L_Ear":
-            vertex_island = vertex_group_dictionaries[source_vertex_group_name] 
+            #vertex_island = vertex_group_dictionaries[source_vertex_group_name] 
+            vertex_island = get_connected_components_indices(source_mesh, vertex_group_dictionaries, source_vertex_group_name)
             source_armature = bpy.data.objects[source_armature_name]
             source_bone = source_armature.pose.bones.get(source_vertex_group_name)
             target_armature = bpy.data.objects[target_armature_name]
             target_bone = target_armature.pose.bones.get(source_vertex_group_name)
-            center_point = find_center(vertex_island)
+            center_point = find_center(vertex_island[0])
             #distance between source bone and center of vertex group
             distance_from_bone = distance_between_center_and_bone(source_bone, center_point)
             #get the location of the center of the supposed target vertex group using the above distance from bone
             target_vertex_group_center = find_target_vertex_group_center(distance_from_bone, target_bone)
 
             #TEST
-            mark_location(target_vertex_group_center)
-
-            source_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head00"
-            mesh = bpy.data.objects[source_mesh_name]
-            distance_threshold = 100
+            #mark_location(target_vertex_group_center)
+            #source_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head00"
+            #mesh = bpy.data.objects[source_mesh_name]
+            #distance_threshold = 20
             #select_vertex_group(bpy.data.objects[source_mesh_name], source_vertex_group_name, vertex_group_dictionaries)
-            components = get_connected_components(mesh, vertex_group_dictionaries, source_vertex_group_name)
-            in_range_components = get_components_in_range(components, distance_threshold)
-            select_component(mesh, [v for c in in_range_components for v in c])
-            breakpoint()
+            #components = get_connected_components_indices(mesh, vertex_group_dictionaries, source_vertex_group_name)
+            #in_range_components = get_components_in_range(mesh, components, distance_threshold)
+            #select_component(mesh, [mesh.data.vertices[idx] for c in components[:2] for idx in c])
+            #breakpoint()
             #TEST
             #convert all vertex keys to distance from center point
-            distance_dict = distance_from_center(center_point, vertex_island)
+            distance_dict = distance_from_center(center_point, vertex_island[0])
             estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, source_vertex_group_name)
 
             print(f"source vertex group transferred to target mesh")
@@ -199,8 +199,8 @@ def select_component(mesh, component):
     bpy.ops.mesh.select_all(action = 'DESELECT')
     bpy.ops.object.mode_set(mode = 'OBJECT')
 
-    for i in component:
-        vertex = mesh.data.vertices[i]
+    for vertex in component:
+        #vertex = mesh.data.vertices[i]
         vertex.select = True
 
     bpy.ops.object.mode_set(mode = 'EDIT') 
@@ -216,7 +216,7 @@ def bfs(start_vertex, visited, adjacency_list):
             queue.extend(adjacency_list[current_vertex])
     return connected_component, visited
 
-def get_connected_components(mesh, vertex_group_dict, group_name, selected_only=False):
+def get_connected_components_indices(mesh, vertex_group_dict, group_name, selected_only=False):
     group_verts = list(vertex_group_dict[group_name].keys())
     vertex_indices = [v.index for v in group_verts]
     adjacency_list = defaultdict(list)
@@ -235,9 +235,10 @@ def get_connected_components(mesh, vertex_group_dict, group_name, selected_only=
             connected_components.append(component)
     return connected_components
 
-def get_components_in_range(connected_components, distance_threshold):
+def get_components_in_range(mesh, connected_components, distance_threshold):
     # Precompute coordinates for all components
-    coordinates = [[a.co for a in component] for component in connected_components]
+    coordinates = [[mesh.data.vertices[a].co for a in component] for component in connected_components]
+    coordinates_mesh_vertices = [[mesh.data.vertices[a] for a in component] for component in connected_components]
 
     # Create KDTree for each component
     kdtree_list = []
@@ -261,7 +262,7 @@ def get_components_in_range(connected_components, distance_threshold):
                 if dist < min_distance:
                     min_distance = dist
             if min_distance < distance_threshold:
-                in_range_components.append(coordinates[i])
+                in_range_components.append(coordinates_mesh_vertices[i])
 
     return in_range_components
 
@@ -284,7 +285,7 @@ target_armature_name = "Root.001"
 
 
 vertex_group_dictionaries = organize_vertex_groups(source_mesh_name)
-remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_armature_name, target_mesh_name)
+remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_armature_name, source_mesh_name, target_mesh_name)
 
 
 
