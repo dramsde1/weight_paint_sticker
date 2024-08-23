@@ -78,10 +78,12 @@ def distance_from_center(center, vertex_island_dict):
 
 def distance_between_center_and_bone(source_bone, source_armature, center_point):
     world_head_location = source_armature.matrix_world @ source_bone.head
-    distance = (world_head_location - center_point).length
-    return distance
+    vector = (world_head_location - center_point)
+    distance = vector.length
+    direction = vector.normalized()
+    return distance, direction
 
-def find_target_vertex_group_center(distance, target_armature, target_bone, target_mesh):
+def find_target_vertex_group_center(distance, direction, target_armature, target_bone, target_mesh):
     min_distance = float('inf')
     nearest_vertex = None
     world_head_location = target_armature.matrix_world @ target_bone.head
@@ -92,7 +94,7 @@ def find_target_vertex_group_center(distance, target_armature, target_bone, targ
         kd.insert(v.co, i)
     kd.balance()
 
-    estimated_vertex = world_head_location + distance
+    estimated_vertex = world_head_location - (direction * distance)
 
     co, index, dist = kd.find(estimated_vertex)
     nearest_vertex = target_mesh.data.vertices[index] 
