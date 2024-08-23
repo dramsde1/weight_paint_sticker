@@ -58,12 +58,14 @@ def find_center(vertex_group_name, mesh):
     return loc
 
 
-def distance_from_center(center, vertex_island_dict):
+def distance_from_center(center, vertex_island_dict, source_mesh):
     distance_dict = {}
     for v in vertex_island_dict:
-        dist = center - v.co
+        vector = (center - source_mesh.matrix_world @ v.co)
+        distance = vector.length
+        direction = vector.normalized()
         weight = vertex_island_dict[v]
-        distance_dict[dist.freeze()] = weight
+        distance_dict[v] = (distance, direction, weight)
     return distance_dict
 
 def distance_between_center_and_bone(source_bone, source_armature, center_point):
@@ -134,7 +136,7 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
         target_vertex_group_center = find_target_vertex_group_center(distance_from_bone, direction_to_target_center, target_armature, target_bone, target_mesh)
         vertex_island = vertex_group_dictionaries[source_vertex_group_name]
 
-        distance_dict = distance_from_center(center_point, vertex_island)
+        distance_dict = distance_from_center(center_point, vertex_island, source_mesh)
         estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, source_vertex_group_name)
         print(f"source vertex group transferred to target mesh")
 
