@@ -21,23 +21,20 @@ def estimate_target_island(distance_dict, target_mesh, target_vertex_group_cente
     for i, v in enumerate(target_mesh_data.vertices):
         kd.insert(v.co, i)
     kd.balance()
+    
+    for v in distance_dict:
+        metadata = distance_dict[v]
+        distance = metadata["distance"]
+        direction = metadata["direction"]
+        weight = metadata["weight"]
 
-    # Loop through all vertices
-    for d in distance_dict:
-        #initialize min distance and min vertex
-        #get the true location of the matching target vertex
-        #center - v = dist
-        #center - dist = v
-        target_estimate = target_vertex_group_center - d
+        target_estimate = target_vertex_group_center - (direction * distance)
         # Find the closest point to the center
         co, index, dist = kd.find(target_estimate)
-        weight = distance_dict[d]
         vertex_group.add([index], weight, 'REPLACE')
          
-
 def is_in_vertex_group(vert_index, vert_group):
       return vert_group.weight(vert_index) > 0
-
 
 def find_center(vertex_group_name, mesh):
     context = bpy.context
@@ -65,7 +62,7 @@ def distance_from_center(center, vertex_island_dict, source_mesh):
         distance = vector.length
         direction = vector.normalized()
         weight = vertex_island_dict[v]
-        distance_dict[v] = (distance, direction, weight)
+        distance_dict[v] = {"distance":distance, "direction":direction, "weight":weight}
     return distance_dict
 
 def distance_between_center_and_bone(source_bone, source_armature, center_point):
