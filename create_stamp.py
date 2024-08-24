@@ -27,9 +27,7 @@ def estimate_target_island(distance_dict, target_mesh, target_vertex_group_cente
         distance = metadata["distance"]
         direction = metadata["direction"]
         weight = metadata["weight"]
-
         target_estimate = target_vertex_group_center - (direction * distance)
-        # Find the closest point to the center
         co, index, dist = kd.find(target_estimate)
         vertex_group.add([index], weight, 'REPLACE')
          
@@ -62,7 +60,7 @@ def distance_from_center(center, vertex_island_dict, source_mesh):
         distance = vector.length
         direction = vector.normalized()
         weight = vertex_island_dict[v]
-        distance_dict[v] = {"distance":distance, "direction":direction, "weight":weight}
+        distance_dict[v] = {"distance": distance, "direction": direction, "weight": weight}
     return distance_dict
 
 def distance_between_center_and_bone(source_bone, source_armature, center_point):
@@ -80,15 +78,14 @@ def find_target_vertex_group_center(distance, direction, target_armature, target
     size = len(target_mesh.data.vertices)
     kd = mathutils.kdtree.KDTree(size)
     for i, v in enumerate(target_mesh.data.vertices):
-        kd.insert(v.co, i)
+        kd.insert(target_mesh.matrix_world @ v.co, i)
     kd.balance()
 
     estimated_vertex = world_head_location - (direction * distance)
-
     co, index, dist = kd.find(estimated_vertex)
     nearest_vertex = target_mesh.data.vertices[index] 
    
-    return nearest_vertex
+    return target_mesh.matrix_world @ nearest_vertex.co
 
 
 def organize_vertex_groups(source_mesh_name):
@@ -132,13 +129,14 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
         #get the location of the center of the supposed target vertex group using the above distance from bone
         target_vertex_group_center = find_target_vertex_group_center(distance_from_bone, direction_to_target_center, target_armature, target_bone, target_mesh)
         vertex_island = vertex_group_dictionaries[source_vertex_group_name]
-
         distance_dict = distance_from_center(center_point, vertex_island, source_mesh)
         estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, source_vertex_group_name)
         print(f"source vertex group transferred to target mesh")
-
     print(f"All source vertex groups transferred to target mesh")
 
+
+def mark_location(vertex):
+    bpy.ops.object.empty_add(type='PLAIN_AXES', location=vertex)
 
 def get_vertex_groups(mesh_name):
     vertex_groups = bpy.data.objects[mesh_name].vertex_groups
