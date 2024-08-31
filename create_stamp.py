@@ -13,25 +13,6 @@ import sys
 
 
 #1) get the weights for each vertex in a vertex groups for a single bone 
-def estimate_target_island(distance_dict, target_mesh, target_vertex_group_center, vertex_group_name):
-    target_mesh_data = target_mesh.data
-    vertex_group = target_mesh.vertex_groups.get(vertex_group_name)
-   
-    size = len(target_mesh_data.vertices)
-    kd = mathutils.kdtree.KDTree(size)
-    for i, v in enumerate(target_mesh_data.vertices):
-        kd.insert(v.co, i)
-    kd.balance()
-    
-    for v in distance_dict:
-        metadata = distance_dict[v]
-        distance = metadata["distance"]
-        direction = metadata["direction"]
-        weight = metadata["weight"]
-        target_estimate = target_vertex_group_center - (direction * distance)
-        co, index, dist = kd.find(target_estimate)
-        vertex_group.add([index], weight, 'REPLACE')
-         
 def is_in_vertex_group(vert_index, vert_group):
       return vert_group.weight(vert_index) > 0
 
@@ -117,7 +98,7 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
     distance_dict = distance_from_center(center_point, source_selected_vertices, source_mesh)
     #now you can make the newly created empty as your center and base everything off of that 
    
-    if not source_obj or not target_obj:
+    if not source_mesh or not target_mesh:
         print("Source or target object not found.")
         sys.exit()
 
@@ -147,10 +128,10 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
         if hit_location:
             # you want to get the closest 
             #world_hit_location = target_obj.matrix_world.inverted() @ hit_location
-            world_hit_location = target_obj.matrix_world @ hit_location
+            world_hit_location = target_mesh.matrix_world @ hit_location
             nearest = kd_tree.find_nearest(world_hit_location)
 
-            target_vertex_group = target_obj.vertex_groups.get(source_vertex_group_name)
+            target_vertex_group = target_mesh.vertex_groups.get(source_vertex_group_name)
             target_vertex_group.add([nearest.index], weight,'REPLACE')
 
 
@@ -179,4 +160,5 @@ target_armature_name = "Root.001"
 source_vertex_group_name = "C_nose_Top"
 empty_name = "Empty"
 
+vertex_group_dictionaries = organize_vertex_groups(source_mesh_name)
 remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_armature_name, source_mesh_name, target_mesh_name, source_vertex_group_name, empty_name)
