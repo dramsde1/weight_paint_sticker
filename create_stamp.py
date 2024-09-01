@@ -6,10 +6,8 @@ import pip
 #pip.main(['install', 'dask', '--target', site.USER_SITE])
 import bpy
 import bmesh
-from mathutils.bvhtree import BVHTree
-from mathutils import Vector
-from collections import defaultdict, deque
 import sys
+from mathutils import Vector
 
 
 #1) get the weights for each vertex in a vertex groups for a single bone 
@@ -46,29 +44,23 @@ def distance_from_center(center, vertex_island_dict, source_mesh):
     return distance_dict
 
 
-def organize_vertex_groups(source_mesh_name):
+def organize_vertex_groups(source_mesh_name, bm):
     vertex_groups = get_vertex_groups(source_mesh_name)
     vertex_group_dict = {}
     source_obj = bpy.data.objects[source_mesh_name]
-    mesh_data = bpy.data.objects[source_mesh_name].data
+    #flip normals
+#    source_obj = bpy.context.active_object
+    bpy.context.view_layer.objects.active = source_obj
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.mesh.normals_make_consistent(inside=True)
+    bpy.ops.object.mode_set(mode='OBJECT')
 
     #copy vertices
-    bm = bmesh.new()
-    bm.from_mesh(mesh_data)
-
+    bm.from_mesh(source_obj.data)
     # Loop through all vertices to get all non zero weights and their vertex coordinates
     #for v in mesh_data.vertices:
     for v in bm.verts:
-        v.co = source_obj.matrix_world @ v.co
-
-        # Calculate the direction from the vertex to the object's origin
-        to_origin = (source_obj.location - source_obj.matrix_world @ v.co).normalized()
-
-        if v.normal.dot(to_origin) > 0:  # The dot product > 0 means the normal is pointing outward
-            # Flip the normal by reversing the face normals associated with the vertex
-            for face in v.link_faces:
-                face.normal_flip()
-
         for source_vertex_group in vertex_groups:
             try:
                 if is_in_vertex_group(v.index, source_vertex_group):
@@ -95,6 +87,7 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
     center_point = find_center(source_vertex_group_name, source_mesh)
 
     source_selected_vertices = vertex_group_dictionaries[source_vertex_group_name]
+
     distance_dict = distance_from_center(center_point, source_selected_vertices, source_mesh)
     #now you can make the newly created empty as your center and base everything off of that 
    
@@ -102,14 +95,13 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
         print("Source or target object not found.")
         sys.exit()
 
+    bpy.context.view_layer.objects.active = target_mesh
     # Switch to object mode to avoid issues
     bpy.ops.object.mode_set(mode='OBJECT')
 
     # Create a KDTree for the target mesh (faster ray casting)
     bm = bpy.context.evaluated_depsgraph_get()
     kd_tree = mathutils.bvhtree.BVHTree.FromObject(target_mesh, bm)
-
-    vertex_group_dictionaries = organize_vertex_groups(source_mesh_name)
 
     selected_vertex_group = vertex_group_dictionaries[source_vertex_group_name]
 
@@ -130,8 +122,11 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
             #world_hit_location = target_obj.matrix_world.inverted() @ hit_location
             world_hit_location = target_mesh.matrix_world @ hit_location
             nearest = kd_tree.find_nearest(world_hit_location)
-
+            location, normal, face_index, _ = nearest
+            # Get the face from the BMesh using the face index
+            face = bm.faces[face_index]
             target_vertex_group = target_mesh.vertex_groups.get(source_vertex_group_name)
+            breakpoint()
             target_vertex_group.add([nearest.index], weight,'REPLACE')
 
 
@@ -147,18 +142,18 @@ def get_vertex_groups(mesh_name):
 #source_armature_name = "source_arm"
 #target_armature_name = "target_arm"
 
-#source_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head00"
-#target_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head.001"
-#source_armature_name = "Root.002"
-#target_armature_name = "Root.001"
-
-#get the source and target 
 source_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head00"
-target_mesh_name = "Cube"
+target_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head.001"
 source_armature_name = "Root.002"
 target_armature_name = "Root.001"
+
+#get the source and target 
+#source_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head00"
+#target_mesh_name = "Cube"
+#source_armature_name = "Root.002"
+#target_armature_name = "Root.001"
 source_vertex_group_name = "C_nose_Top"
 empty_name = "Empty"
-
-vertex_group_dictionaries = organize_vertex_groups(source_mesh_name)
+bm = bmesh.new() #bmesh where you will put copy of source vertex
+vertex_group_dictionaries = organize_vertex_groups(source_mesh_name, bm)
 remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_armature_name, source_mesh_name, target_mesh_name, source_vertex_group_name, empty_name)
