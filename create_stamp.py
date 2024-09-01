@@ -8,6 +8,7 @@ import bpy
 import bmesh
 import sys
 from mathutils import Vector
+from mathutils.kdtree import KDTree
 
 
 #1) get the weights for each vertex in a vertex groups for a single bone 
@@ -101,7 +102,18 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
 
     # Create a KDTree for the target mesh (faster ray casting)
     bm = bpy.context.evaluated_depsgraph_get()
-    kd_tree = mathutils.bvhtree.BVHTree.FromObject(target_mesh, bm)
+    bvh_tree = mathutils.bvhtree.BVHTree.FromObject(target_mesh, bm)
+
+    #create kd tree for easier vertex index location targeting based on the hit location
+    # Create a KDTree with the number of vertices
+    size = len(target_mesh.data.vertices)
+    kd = KDTree(size)
+    # Insert all vertices into the KDTree
+    for i, v in enumerate(target_mesh.data.vertices):
+        world_vertex_location = target_mesh.matrix_world @ v.co
+        kd.insert(world_vertex_location, i)
+    # Balance the KDTree after insertion
+    kd.balance()
 
     selected_vertex_group = vertex_group_dictionaries[source_vertex_group_name]
 
@@ -115,19 +127,15 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
         target_estimate = empty_obj.location + distance
 
         # Ray cast to find the intersection point on the target mesh
-        hit_location, hit_normal, face_index, distance = kd_tree.ray_cast(target_estimate, vertex.normal)
+        hit_location, hit_normal, face_index, distance = bvh_tree.ray_cast(target_estimate, vertex.normal)
         
         if hit_location:
             # you want to get the closest 
             #world_hit_location = target_obj.matrix_world.inverted() @ hit_location
             world_hit_location = target_mesh.matrix_world @ hit_location
-            nearest = kd_tree.find_nearest(world_hit_location)
-            location, normal, face_index, _ = nearest
-            # Get the face from the BMesh using the face index
-            face = bm.faces[face_index]
+            co, index, dist = kd.find(world_hit_location)
             target_vertex_group = target_mesh.vertex_groups.get(source_vertex_group_name)
-            breakpoint()
-            target_vertex_group.add([nearest.index], weight,'REPLACE')
+            target_vertex_group.add([index], weight,'REPLACE')
 
 
 def mark_location(vertex):
