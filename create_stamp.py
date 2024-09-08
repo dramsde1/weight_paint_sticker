@@ -9,6 +9,7 @@ import bmesh
 import sys
 from mathutils import Vector
 from mathutils.kdtree import KDTree
+from collections import deque
 
 
 #1) get the weights for each vertex in a vertex groups for a single bone 
@@ -134,9 +135,47 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
         co, index, dist = kd.find(target_estimate)
         #location = (co.x, co.y, co.z)
         #bpy.ops.object.empty_add(type='PLAIN_AXES', location=location)
-        target_vertex_group.add([index], weight,'REPLACE')
+        #get the center of the connected component cluster in order to weight paint groups
+        group = select_connected_vertices(target_mesh, index, 5)
+        for idx in group:
+            target_vertex_group.add([idx], weight,'REPLACE')
 
     target_bm.free()
+
+def select_connected_vertices(obj, start_vertex_index, max_depth):
+    # Ensure the object is a mesh
+    if obj.type != 'MESH':
+        print("Active object is not a mesh.")
+        return
+    
+    # Create a BMesh object to work with the mesh data
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    
+    # Initialize the BFS queue with the start vertex
+    bm.verts.ensure_lookup_table()
+    start_vertex = bm.verts[start_vertex_index]
+    queue = deque([(start_vertex, 0)])  # (vertex, depth)
+    visited = set([start_vertex.index])
+    
+    # Perform BFS to find vertices within the given depth
+    while queue:
+        vertex, depth = queue.popleft()
+        
+        # If we reached the maximum depth, skip processing further
+        if depth >= max_depth:
+            continue
+        
+        # Iterate over neighboring vertices
+        for edge in vertex.link_edges:
+            neighbor = edge.other_vert(vertex)
+            if neighbor.index not in visited:
+                visited.add(neighbor.index)
+                queue.append((neighbor, depth + 1))
+    
+    bm.free()
+    return visited
+
 
 def mark_location(vertex):
     bpy.ops.object.empty_add(type='PLAIN_AXES', location=vertex)
