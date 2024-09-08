@@ -83,6 +83,8 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
     target_mesh = bpy.data.objects[target_mesh_name]
     source_mesh = bpy.data.objects[source_mesh_name]
     empty_obj = bpy.data.objects[empty_name]
+    # Get the world coordinates of the empty object
+    empty_world_coords = empty_obj.matrix_world.translation
 
     #for source_vertex_group_name in vertex_group_dictionaries:
     center_point = find_center(source_vertex_group_name, source_mesh)
@@ -96,47 +98,45 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
         print("Source or target object not found.")
         sys.exit()
 
-    bpy.context.view_layer.objects.active = target_mesh
-    # Switch to object mode to avoid issues
-    bpy.ops.object.mode_set(mode='OBJECT')
+    target_bm = bmesh.new()
+    target_bm.from_mesh(target_mesh.data)
+    boundary_verts = []
 
-    # Create a KDTree for the target mesh (faster ray casting)
-    bm = bpy.context.evaluated_depsgraph_get()
-    bvh_tree = mathutils.bvhtree.BVHTree.FromObject(target_mesh, bm)
+    for f in target_bm.faces:
+        face_normal = f.normal
+        for v in f.verts:
+            # Compare vertex normal with face normal
+            if v.normal.dot(face_normal) > 0:
+                world_vertex_location = target_mesh.matrix_world @ v.co
+                boundary_verts.append((world_vertex_location, v.index))
 
     #create kd tree for easier vertex index location targeting based on the hit location
     # Create a KDTree with the number of vertices
-    size = len(target_mesh.data.vertices)
+    size = len(boundary_verts)
     kd = KDTree(size)
     # Insert all vertices into the KDTree
-    for i, v in enumerate(target_mesh.data.vertices):
-        world_vertex_location = target_mesh.matrix_world @ v.co
-        kd.insert(world_vertex_location, i)
+    for tup in boundary_verts:
+        vert = tup[0]
+        index = tup[1]
+        kd.insert(vert, index)
     # Balance the KDTree after insertion
     kd.balance()
 
     selected_vertex_group = vertex_group_dictionaries[source_vertex_group_name]
+    target_vertex_group = target_mesh.vertex_groups.get(source_vertex_group_name)
 
-    # Loop through each vertex in the source mesh
-    for vertex in selected_vertex_group:
-
+    for vertex in distance_dict:
         #get new positions based on distance_dict
         metadata = distance_dict[vertex]
         distance = metadata["distance"]
         weight = metadata["weight"]
-        target_estimate = empty_obj.location + distance
+        target_estimate = empty_world_coords + distance
+        co, index, dist = kd.find(target_estimate)
+        #location = (co.x, co.y, co.z)
+        #bpy.ops.object.empty_add(type='PLAIN_AXES', location=location)
+        target_vertex_group.add([index], weight,'REPLACE')
 
-        # Ray cast to find the intersection point on the target mesh
-        hit_location, hit_normal, face_index, distance = bvh_tree.ray_cast(target_estimate, vertex.normal)
-        
-        if hit_location:
-            # you want to get the closest 
-            #world_hit_location = target_obj.matrix_world.inverted() @ hit_location
-            world_hit_location = target_mesh.matrix_world @ hit_location
-            co, index, dist = kd.find(world_hit_location)
-            target_vertex_group = target_mesh.vertex_groups.get(source_vertex_group_name)
-            target_vertex_group.add([index], weight,'REPLACE')
-
+    target_bm.free()
 
 def mark_location(vertex):
     bpy.ops.object.empty_add(type='PLAIN_AXES', location=vertex)
@@ -165,3 +165,5 @@ empty_name = "Empty"
 bm = bmesh.new() #bmesh where you will put copy of source vertex
 vertex_group_dictionaries = organize_vertex_groups(source_mesh_name, bm)
 remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_armature_name, source_mesh_name, target_mesh_name, source_vertex_group_name, empty_name)
+
+
