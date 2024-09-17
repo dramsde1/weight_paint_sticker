@@ -12,6 +12,60 @@ from mathutils.kdtree import KDTree
 from collections import deque
 
 
+def get_verts_within_bounds():
+    # Get the object to use as the bounding box (e.g., a rectangle or cube)
+    bounding_box_obj = bpy.data.objects.get("Rectangle")  # Replace "Rectangle" with the name of your bounding box object
+    
+    # Ensure the bounding box object exists
+    if bounding_box_obj and bounding_box_obj.type == 'MESH':
+        # Calculate the world-space bounding box of the object
+        bbox_corners = [bounding_box_obj.matrix_world @ Vector(corner) for corner in bounding_box_obj.bound_box]
+        
+        # Get the min and max points of the bounding box
+        min_x = min([v.x for v in bbox_corners])
+        max_x = max([v.x for v in bbox_corners])
+        min_y = min([v.y for v in bbox_corners])
+        max_y = max([v.y for v in bbox_corners])
+        min_z = min([v.z for v in bbox_corners])
+        max_z = max([v.z for v in bbox_corners])
+        
+        # Get the active mesh (the object whose vertices you want to select)
+        obj = bpy.context.object
+        if obj and obj.type == 'MESH':
+            mesh = obj.data
+            
+            # Switch to edit mode to manipulate vertices
+            bpy.ops.object.mode_set(mode='EDIT')
+            
+            # Create a BMesh instance to work with
+            bm = bmesh.from_edit_mesh(mesh)
+            
+            # Iterate over all vertices and select those within the bounding rectangle
+            for vert in bm.verts:
+                # Transform the vertex coordinates to world space
+                v_co_world = obj.matrix_world @ vert.co
+                
+                # Check if the vertex is within the bounds of the bounding box
+                if (min_x <= v_co_world.x <= max_x and
+                    min_y <= v_co_world.y <= max_y and
+                    min_z <= v_co_world.z <= max_z):
+                    vert.select = True  # Select the vertex
+                else:
+                    vert.select = False  # Deselect the vertex
+            
+            # Update the mesh to reflect changes
+            bmesh.update_edit_mesh(mesh)
+        
+        # Switch back to object mode if needed
+        bpy.ops.object.mode_set(mode='OBJECT')
+    else:
+        print("Bounding box object not found or not a mesh.")
+
+
+
+
+
+
 #1) get the weights for each vertex in a vertex groups for a single bone 
 def is_in_vertex_group(vert_index, vert_group):
       return vert_group.weight(vert_index) > 0
@@ -143,39 +197,37 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
     target_bm.free()
 
 def select_connected_vertices(obj, start_vertex_index, max_depth):
-    # Ensure the object is a mesh
     if obj.type != 'MESH':
         print("Active object is not a mesh.")
         return
     
-    # Create a BMesh object to work with the mesh data
-    bm = bmesh.new()
-    bm.from_mesh(obj.data)
+    # Access the mesh data directly
+    mesh = obj.data
     
-    # Initialize the BFS queue with the start vertex
-    bm.verts.ensure_lookup_table()
-    start_vertex = bm.verts[start_vertex_index]
-    queue = deque([(start_vertex, 0)])  # (vertex, depth)
-    visited = set([start_vertex.index])
+    # Initialize BFS
+    queue = deque([(start_vertex_index, 0)])
+    visited = {start_vertex_index}
     
-    # Perform BFS to find vertices within the given depth
+    # Pre-build adjacency list using edges
+    adjacency_list = [[] for _ in range(len(mesh.vertices))]
+    for edge in mesh.edges:
+        v1, v2 = edge.vertices
+        adjacency_list[v1].append(v2)
+        adjacency_list[v2].append(v1)
+    
+    # Perform BFS
     while queue:
-        vertex, depth = queue.popleft()
+        vertex_index, depth = queue.popleft()
         
-        # If we reached the maximum depth, skip processing further
         if depth >= max_depth:
             continue
         
-        # Iterate over neighboring vertices
-        for edge in vertex.link_edges:
-            neighbor = edge.other_vert(vertex)
-            if neighbor.index not in visited:
-                visited.add(neighbor.index)
-                queue.append((neighbor, depth + 1))
+        for neighbor_index in adjacency_list[vertex_index]:
+            if neighbor_index not in visited:
+                visited.add(neighbor_index)
+                queue.append((neighbor_index, depth + 1))
     
-    bm.free()
     return visited
-
 
 def mark_location(vertex):
     bpy.ops.object.empty_add(type='PLAIN_AXES', location=vertex)
