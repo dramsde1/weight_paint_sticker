@@ -12,10 +12,7 @@ from mathutils.kdtree import KDTree
 from collections import deque
 
 
-def get_verts_within_bounds():
-    # Get the object to use as the bounding box (e.g., a rectangle or cube)
-    bounding_box_obj = bpy.data.objects.get("Rectangle")  # Replace "Rectangle" with the name of your bounding box object
-    
+def get_bounds(bounding_box_obj):
     # Ensure the bounding box object exists
     if bounding_box_obj and bounding_box_obj.type == 'MESH':
         # Calculate the world-space bounding box of the object
@@ -28,38 +25,50 @@ def get_verts_within_bounds():
         max_y = max([v.y for v in bbox_corners])
         min_z = min([v.z for v in bbox_corners])
         max_z = max([v.z for v in bbox_corners])
-        
-        # Get the active mesh (the object whose vertices you want to select)
-        obj = bpy.context.object
-        if obj and obj.type == 'MESH':
-            mesh = obj.data
-            
-            # Switch to edit mode to manipulate vertices
-            bpy.ops.object.mode_set(mode='EDIT')
-            
-            # Create a BMesh instance to work with
-            bm = bmesh.from_edit_mesh(mesh)
-            
-            # Iterate over all vertices and select those within the bounding rectangle
-            for vert in bm.verts:
-                # Transform the vertex coordinates to world space
-                v_co_world = obj.matrix_world @ vert.co
-                
-                # Check if the vertex is within the bounds of the bounding box
-                if (min_x <= v_co_world.x <= max_x and
-                    min_y <= v_co_world.y <= max_y and
-                    min_z <= v_co_world.z <= max_z):
-                    vert.select = True  # Select the vertex
-                else:
-                    vert.select = False  # Deselect the vertex
-            
-            # Update the mesh to reflect changes
-            bmesh.update_edit_mesh(mesh)
-        
-        # Switch back to object mode if needed
-        bpy.ops.object.mode_set(mode='OBJECT')
-    else:
-        print("Bounding box object not found or not a mesh.")
+
+        bounding_dict = {"min_x":min_x,
+                        "max_x":max_x,
+                        "min_y":min_y,
+                        "max_y":max_y,
+                        "min_z":min_z,
+                        "max_z":max_z}
+
+        return bounding_dict
+
+    else:
+        return None 
+
+   #     # Get the active mesh (the object whose vertices you want to select)
+   #     obj = bpy.context.object
+   #     if obj and obj.type == 'MESH':
+   #         mesh = obj.data
+   #         
+   #         # Switch to edit mode to manipulate vertices
+   #         bpy.ops.object.mode_set(mode='EDIT')
+   #         
+   #         # Create a BMesh instance to work with
+   #         bm = bmesh.from_edit_mesh(mesh)
+   #         
+   #         # Iterate over all vertices and select those within the bounding rectangle
+   #         for vert in bm.verts:
+   #             # Transform the vertex coordinates to world space
+   #             v_co_world = obj.matrix_world @ vert.co
+   #             
+   #             # Check if the vertex is within the bounds of the bounding box
+   #             if (min_x <= v_co_world.x <= max_x and
+   #                 min_y <= v_co_world.y <= max_y and
+   #                 min_z <= v_co_world.z <= max_z):
+   #                 vert.select = True  # Select the vertex
+   #             else:
+   #                 vert.select = False  # Deselect the vertex
+   #         
+   #         # Update the mesh to reflect changes
+   #         bmesh.update_edit_mesh(mesh)
+   #     
+   #     # Switch back to object mode if needed
+   #     bpy.ops.object.mode_set(mode='OBJECT')
+   # else:
+   #     print("Bounding box object not found or not a mesh.")
 
 
 
