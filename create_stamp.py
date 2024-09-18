@@ -10,6 +10,7 @@ import sys
 from mathutils import Vector
 from mathutils.kdtree import KDTree
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 
 
 def get_bounds(bounding_box_obj):
@@ -186,7 +187,7 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
 
     selected_vertex_group = vertex_group_dictionaries[source_vertex_group_name]
     target_vertex_group = target_mesh.vertex_groups.get(source_vertex_group_name)
-
+    found_target_vertices = []
     for vertex in distance_dict:
         #get new positions based on distance_dict
         metadata = distance_dict[vertex]
@@ -194,16 +195,14 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
         weight = metadata["weight"]
         target_estimate = empty_world_coords + distance
         co, index, dist = kd.find(target_estimate)
-        #location = (co.x, co.y, co.z)
-        #bpy.ops.object.empty_add(type='PLAIN_AXES', location=location)
-        #get the center of the connected component cluster in order to weight paint groups
-        group = select_connected_vertices(target_mesh, index, 5)
-        for idx in group:
-            target_vertex_group.add([idx], weight,'REPLACE')
+        found_target_vertices.append({"index": index, "weight": weight})
+    
+    max_depth = 5
+    connected_components = run_parallel_bfs(target_mesh, target_vertex_group, found_target_vertices, max_depth)
 
     target_bm.free()
 
-def select_connected_vertices(obj, start_vertex_index, max_depth):
+def paint_connected_vertices(obj, target_vertex_group, start_vertex_index, max_depth, weight):
     if obj.type != 'MESH':
         print("Active object is not a mesh.")
         return
@@ -233,8 +232,29 @@ def select_connected_vertices(obj, start_vertex_index, max_depth):
             if neighbor_index not in visited:
                 visited.add(neighbor_index)
                 queue.append((neighbor_index, depth + 1))
+
+
+    for idx in visited:
+        target_vertex_group.add([idx], weight,'REPLACE')
     
     return visited
+
+# Function to handle each parallel task
+def bfs_task(params):
+    obj, target_vertex_group, start_vertex_index, max_depth, weight = params
+    return paint_connected_vertices(obj, target_vertex_group, start_vertex_index, max_depth, weight)
+
+# Example usage of ThreadPoolExecutor for parallel execution
+def run_parallel_bfs(obj, target_vertex_group, found_target_vertices, max_depth):
+    # Create a list of parameters to pass to each thread
+    params_list = [(obj, target_vertex_group, d["index"], max_depth, d["weight"]) for d in found_target_vertices]
+    
+    with ThreadPoolExecutor() as executor:
+        # Run the BFS function in parallel for each start vertex
+        results = list(executor.map(bfs_task, params_list))
+    
+    return results
+
 
 def mark_location(vertex):
     bpy.ops.object.empty_add(type='PLAIN_AXES', location=vertex)
