@@ -32,43 +32,10 @@ def get_bounds(bounding_box_obj):
                         "max_y":max_y,
                         "min_z":min_z,
                         "max_z":max_z}
-
         return bounding_dict
-
     else:
         return None 
 
-   #     # Get the active mesh (the object whose vertices you want to select)
-   #     obj = bpy.context.object
-   #     if obj and obj.type == 'MESH':
-   #         mesh = obj.data
-   #         
-   #         # Switch to edit mode to manipulate vertices
-   #         bpy.ops.object.mode_set(mode='EDIT')
-   #         
-   #         # Create a BMesh instance to work with
-   #         bm = bmesh.from_edit_mesh(mesh)
-   #         
-   #         # Iterate over all vertices and select those within the bounding rectangle
-   #         for vert in bm.verts:
-   #             # Transform the vertex coordinates to world space
-   #             v_co_world = obj.matrix_world @ vert.co
-   #             
-   #             # Check if the vertex is within the bounds of the bounding box
-   #             if (min_x <= v_co_world.x <= max_x and
-   #                 min_y <= v_co_world.y <= max_y and
-   #                 min_z <= v_co_world.z <= max_z):
-   #                 vert.select = True  # Select the vertex
-   #             else:
-   #                 vert.select = False  # Deselect the vertex
-   #         
-   #         # Update the mesh to reflect changes
-   #         bmesh.update_edit_mesh(mesh)
-   #     
-   #     # Switch back to object mode if needed
-   #     bpy.ops.object.mode_set(mode='OBJECT')
-   # else:
-   #     print("Bounding box object not found or not a mesh.")
 
 
 
@@ -109,7 +76,7 @@ def distance_from_center(center, vertex_island_dict, source_mesh):
     return distance_dict
 
 
-def organize_vertex_groups(source_mesh_name, bm):
+def arrange_all_groups(source_mesh_name, bm):
     vertex_groups = get_vertex_groups(source_mesh_name)
     vertex_group_dict = {}
     source_obj = bpy.data.objects[source_mesh_name]
@@ -139,6 +106,37 @@ def organize_vertex_groups(source_mesh_name, bm):
             except RuntimeError as e:
                 #Error: Vertex not in group
                 continue
+    return vertex_group_dict
+
+def arrange_vertex_group(source_mesh_name, bm, vertex_group_name):
+    source_obj = bpy.data.objects[source_mesh_name]
+    vertex_group = source_obj.vertex_groups.get(vertex_group_name)
+    vertex_group_dict = {}
+    #flip normals
+#    source_obj = bpy.context.active_object
+    bpy.context.view_layer.objects.active = source_obj
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.mesh.normals_make_consistent(inside=True)
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    #copy vertices
+    bm.from_mesh(source_obj.data)
+    # Loop through all vertices to get all non zero weights and their vertex coordinates
+    #for v in mesh_data.vertices:
+    for v in bm.verts:
+        try:
+            if is_in_vertex_group(v.index, vertex_group):
+                # Assign the weight to the target group
+                weight = source_vertex_group.weight(v.index)
+                if source_vertex_group.name in vertex_group_dict:
+                    vertex_group_dict[vertex_group_name][v] = weight
+                else:
+                    vertex_group_dict[vertex_group_name] = {}
+                    vertex_group_dict[vertex_group_name][v] = weight
+        except RuntimeError as e:
+            #Error: Vertex not in group
+            continue
     return vertex_group_dict
 
 # this function is meant to be used in a for loop, looping through all of the bones/vertex groups on an armature/meshG
@@ -263,7 +261,39 @@ target_armature_name = "Root.001"
 source_vertex_group_name = "C_nose_Top"
 empty_name = "Empty"
 bm = bmesh.new() #bmesh where you will put copy of source vertex
-vertex_group_dictionaries = organize_vertex_groups(source_mesh_name, bm)
-remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_armature_name, source_mesh_name, target_mesh_name, source_vertex_group_name, empty_name)
+#vertex_group_dictionaries = arrange_all_groups(source_mesh_name, bm)
+vertex_group_dictionary = arrange_vertex_group(source_mesh_name, bm, source_vertex_group_name)
+remap_vertex_groups(vertex_group_dictionary, source_armature_name, target_armature_name, source_mesh_name, target_mesh_name, source_vertex_group_name, empty_name)
 
 
+   #     # Get the active mesh (the object whose vertices you want to select)
+   #     obj = bpy.context.object
+   #     if obj and obj.type == 'MESH':
+   #         mesh = obj.data
+   #         
+   #         # Switch to edit mode to manipulate vertices
+   #         bpy.ops.object.mode_set(mode='EDIT')
+   #         
+   #         # Create a BMesh instance to work with
+   #         bm = bmesh.from_edit_mesh(mesh)
+   #         
+   #         # Iterate over all vertices and select those within the bounding rectangle
+   #         for vert in bm.verts:
+   #             # Transform the vertex coordinates to world space
+   #             v_co_world = obj.matrix_world @ vert.co
+   #             
+   #             # Check if the vertex is within the bounds of the bounding box
+   #             if (min_x <= v_co_world.x <= max_x and
+   #                 min_y <= v_co_world.y <= max_y and
+   #                 min_z <= v_co_world.z <= max_z):
+   #                 vert.select = True  # Select the vertex
+   #             else:
+   #                 vert.select = False  # Deselect the vertex
+   #         
+   #         # Update the mesh to reflect changes
+   #         bmesh.update_edit_mesh(mesh)
+   #     
+   #     # Switch back to object mode if needed
+   #     bpy.ops.object.mode_set(mode='OBJECT')
+   # else:
+   #     print("Bounding box object not found or not a mesh.")
