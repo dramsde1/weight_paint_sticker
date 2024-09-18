@@ -38,11 +38,6 @@ def get_bounds(bounding_box_obj):
         return None 
 
 
-
-
-
-
-
 #1) get the weights for each vertex in a vertex groups for a single bone 
 def is_in_vertex_group(vert_index, vert_group):
       return vert_group.weight(vert_index) > 0
@@ -129,8 +124,8 @@ def arrange_vertex_group(source_mesh_name, bm, vertex_group_name):
         try:
             if is_in_vertex_group(v.index, vertex_group):
                 # Assign the weight to the target group
-                weight = source_vertex_group.weight(v.index)
-                if source_vertex_group.name in vertex_group_dict:
+                weight = vertex_group.weight(v.index)
+                if vertex_group_name in vertex_group_dict:
                     vertex_group_dict[vertex_group_name][v] = weight
                 else:
                     vertex_group_dict[vertex_group_name] = {}
@@ -198,28 +193,22 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
         found_target_vertices.append({"index": index, "weight": weight})
     
     max_depth = 5
-    connected_components = run_parallel_bfs(target_mesh, target_vertex_group, found_target_vertices, max_depth)
 
-    target_bm.free()
-
-def paint_connected_vertices(obj, target_vertex_group, start_vertex_index, max_depth, weight):
-    if obj.type != 'MESH':
-        print("Active object is not a mesh.")
-        return
-    
-    # Access the mesh data directly
-    mesh = obj.data
-    
-    # Initialize BFS
-    queue = deque([(start_vertex_index, 0)])
-    visited = {start_vertex_index}
-    
     # Pre-build adjacency list using edges
-    adjacency_list = [[] for _ in range(len(mesh.vertices))]
-    for edge in mesh.edges:
+    adjacency_list = [[] for _ in range(len(target_mesh.data.vertices))]
+    for edge in target_mesh.data.edges:
         v1, v2 = edge.vertices
         adjacency_list[v1].append(v2)
         adjacency_list[v2].append(v1)
+
+    connected_components = run_parallel_bfs(target_vertex_group, found_target_vertices, max_depth, adjacency_list)
+
+    target_bm.free()
+
+def paint_connected_vertices(target_vertex_group, start_vertex_index, max_depth, weight, adjacency_list):
+    # Initialize BFS
+    queue = deque([(start_vertex_index, 0)])
+    visited = {start_vertex_index}
     
     # Perform BFS
     while queue:
@@ -233,7 +222,6 @@ def paint_connected_vertices(obj, target_vertex_group, start_vertex_index, max_d
                 visited.add(neighbor_index)
                 queue.append((neighbor_index, depth + 1))
 
-
     for idx in visited:
         target_vertex_group.add([idx], weight,'REPLACE')
     
@@ -241,13 +229,13 @@ def paint_connected_vertices(obj, target_vertex_group, start_vertex_index, max_d
 
 # Function to handle each parallel task
 def bfs_task(params):
-    obj, target_vertex_group, start_vertex_index, max_depth, weight = params
-    return paint_connected_vertices(obj, target_vertex_group, start_vertex_index, max_depth, weight)
+    target_vertex_group, start_vertex_index, max_depth, weight, adjacency_list = params
+    return paint_connected_vertices(target_vertex_group, start_vertex_index, max_depth, weight, adjacency_list)
 
 # Example usage of ThreadPoolExecutor for parallel execution
-def run_parallel_bfs(obj, target_vertex_group, found_target_vertices, max_depth):
+def run_parallel_bfs(target_vertex_group, found_target_vertices, max_depth, adjacency_list):
     # Create a list of parameters to pass to each thread
-    params_list = [(obj, target_vertex_group, d["index"], max_depth, d["weight"]) for d in found_target_vertices]
+    params_list = [(target_vertex_group, d["index"], max_depth, d["weight"], adjacency_list) for d in found_target_vertices]
     
     with ThreadPoolExecutor() as executor:
         # Run the BFS function in parallel for each start vertex
@@ -286,34 +274,3 @@ vertex_group_dictionary = arrange_vertex_group(source_mesh_name, bm, source_vert
 remap_vertex_groups(vertex_group_dictionary, source_armature_name, target_armature_name, source_mesh_name, target_mesh_name, source_vertex_group_name, empty_name)
 
 
-   #     # Get the active mesh (the object whose vertices you want to select)
-   #     obj = bpy.context.object
-   #     if obj and obj.type == 'MESH':
-   #         mesh = obj.data
-   #         
-   #         # Switch to edit mode to manipulate vertices
-   #         bpy.ops.object.mode_set(mode='EDIT')
-   #         
-   #         # Create a BMesh instance to work with
-   #         bm = bmesh.from_edit_mesh(mesh)
-   #         
-   #         # Iterate over all vertices and select those within the bounding rectangle
-   #         for vert in bm.verts:
-   #             # Transform the vertex coordinates to world space
-   #             v_co_world = obj.matrix_world @ vert.co
-   #             
-   #             # Check if the vertex is within the bounds of the bounding box
-   #             if (min_x <= v_co_world.x <= max_x and
-   #                 min_y <= v_co_world.y <= max_y and
-   #                 min_z <= v_co_world.z <= max_z):
-   #                 vert.select = True  # Select the vertex
-   #             else:
-   #                 vert.select = False  # Deselect the vertex
-   #         
-   #         # Update the mesh to reflect changes
-   #         bmesh.update_edit_mesh(mesh)
-   #     
-   #     # Switch back to object mode if needed
-   #     bpy.ops.object.mode_set(mode='OBJECT')
-   # else:
-   #     print("Bounding box object not found or not a mesh.")
