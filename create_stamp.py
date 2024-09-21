@@ -3,7 +3,7 @@ import mathutils
 import site
 import pip
 
-#pip.main(['install', 'dask', '--target', site.USER_SITE])
+pip.main(['install', 'numpy', '--target', site.USER_SITE])
 import bpy
 import bmesh
 import sys
@@ -11,31 +11,127 @@ from mathutils import Vector
 from mathutils.kdtree import KDTree
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
+import numpy as np
 
 
-def get_bounds(bounding_box_obj):
-    # Ensure the bounding box object exists
-    if bounding_box_obj and bounding_box_obj.type == 'MESH':
-        # Calculate the world-space bounding box of the object
-        bbox_corners = [bounding_box_obj.matrix_world @ Vector(corner) for corner in bounding_box_obj.bound_box]
-        
-        # Get the min and max points of the bounding box
-        min_x = min([v.x for v in bbox_corners])
-        max_x = max([v.x for v in bbox_corners])
-        min_y = min([v.y for v in bbox_corners])
-        max_y = max([v.y for v in bbox_corners])
-        min_z = min([v.z for v in bbox_corners])
-        max_z = max([v.z for v in bbox_corners])
+#START
 
-        bounding_dict = {"min_x":min_x,
-                        "max_x":max_x,
-                        "min_y":min_y,
-                        "max_y":max_y,
-                        "min_z":min_z,
-                        "max_z":max_z}
-        return bounding_dict
-    else:
-        return None 
+def barycentric_coords(p, v0, v1, v2):
+    """
+    Calculate barycentric coordinates for point `p` in the triangle (v0, v1, v2).
+    """
+    v0v1 = v1 - v0
+    v0v2 = v2 - v0
+    v0p = p - v0
+
+    # Compute dot products using NumPy vectorization
+    d00 = np.dot(v0v1, v0v1)
+    d01 = np.dot(v0v1, v0v2)
+    d11 = np.dot(v0v2, v0v2)
+    d20 = np.dot(v0p, v0v1)
+    d21 = np.dot(v0p, v0v2)
+
+    # Compute the denominator of the Barycentric formula
+    denom = d00 * d11 - d01 * d01
+    if denom == 0:
+        return np.array([0, 0, 0])  # Degenerate triangle case
+
+    # Calculate the Barycentric coordinates
+    v = (d11 * d20 - d01 * d21) / denom
+    w = (d00 * d21 - d01 * d20) / denom
+    u = 1.0 - v - w
+
+    return np.array([u, v, w])
+
+def triangulate_polygon(vertices):
+    """
+    Triangulate a convex polygon into triangles using a fan triangulation method.
+    Assumes vertices are in clockwise or counterclockwise order.
+    """
+    triangles = []
+    for i in range(1, len(vertices) - 1):
+        triangles.append([vertices[0], vertices[i], vertices[i + 1]])
+    return triangles
+
+def spread_weights_barycentric_polygon(obj, vertex_group_name, vertex_indices):
+    """
+    Spread weights across vertices within a convex polygon using Barycentric interpolation.
+    """
+    # Access the vertex group
+    vertex_group = obj.vertex_groups[vertex_group_name]
+    
+    # Get the mesh and initialize BMesh
+    mesh = obj.data
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+
+    # Retrieve the coordinates and weights for the polygon vertices in advance
+    polygon_vertices = [np.array(bm.verts[i].co) for i in vertex_indices]
+    vertex_weights = []
+    
+    for idx in vertex_indices:
+        try:
+            weight = vertex_group.weight(idx)
+        except RuntimeError:
+            weight = 0.0
+        vertex_weights.append(weight)
+    
+    # Perform triangulation only once
+    triangle_indices = triangulate_polygon(vertex_indices)
+
+    # Precompute the coordinates for all mesh vertices as NumPy arrays
+    all_vertex_coords = np.array([np.array(vert.co) for vert in bm.verts])
+
+    # Iterate through all vertices and check if they are inside the polygon's triangles
+    for vert in bm.verts:
+        v = np.array(vert.co)
+
+        # Loop over each triangle formed by the polygon triangulation
+        for tri in triangle_indices:
+            v0, v1, v2 = [polygon_vertices[vertex_indices.index(idx)] for idx in tri]
+            
+            # Calculate barycentric coordinates of vertex `v` with respect to triangle (v0, v1, v2)
+            bary_coords = barycentric_coords(v, v0, v1, v2)
+            
+            # If the vertex is inside the triangle (barycentric coordinates >= 0)
+            if np.all(bary_coords >= 0):
+                # Get the corresponding weights for the triangle vertices
+                w0, w1, w2 = [vertex_weights[vertex_indices.index(idx)] for idx in tri]
+                
+                # Perform interpolation using barycentric weights
+                interpolated_weight = (bary_coords[0] * w0 +
+                                       bary_coords[1] * w1 +
+                                       bary_coords[2] * w2)
+                
+                # Assign the interpolated weight to the vertex group
+                vertex_group.add([vert.index], interpolated_weight, 'REPLACE')
+                break  # Skip other triangles since we found a match for this vertex
+
+    # Update BMesh and free memory
+    bm.to_mesh(mesh)
+    bm.free()
+
+# Example usage
+# Select the object and the vertex group to apply the barycentric interpolation
+#obj = bpy.context.object
+#vertex_group_name = "Group"  # Replace with your vertex group name
+#
+## Specify the indices of the polygon's vertices (replace with actual vertex indices)
+#polygon_vertex_indices = [0, 1, 2, 3, 4]  # Example indices for a convex polygon
+
+# Apply barycentric interpolation of weights within the polygon
+#spread_weights_barycentric_polygon(obj, vertex_group_name, polygon_vertex_indices)
+
+
+#END
+
+
+
+
+
+
+
+
 
 
 #1) get the weights for each vertex in a vertex groups for a single bone 
@@ -158,7 +254,7 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
 
     target_bm = bmesh.new()
     target_bm.from_mesh(target_mesh.data)
-    boundary_verts = []
+    boundary_verts = [] #on the outer edge of the mesh
 
     for f in target_bm.faces:
         face_normal = f.normal
@@ -192,7 +288,7 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
         co, index, dist = kd.find(target_estimate)
         found_target_vertices.append({"index": index, "weight": weight})
     
-    max_depth = 5
+    max_depth = 15
 
     # Pre-build adjacency list using edges
     adjacency_list = [[] for _ in range(len(target_mesh.data.vertices))]
