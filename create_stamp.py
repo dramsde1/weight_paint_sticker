@@ -50,10 +50,10 @@ def triangulate_polygon(vertices):
     """
     triangles = []
     for i in range(1, len(vertices) - 1):
-        triangles.append([vertices[0], vertices[i], vertices[i + 1]])
+        triangles.append([(vertices[0], 0), (vertices[i], i), (vertices[i + 1], i + 1)])
     return triangles
 
-def spread_weights_barycentric_polygon(obj, vertex_group_name, vertex_indices):
+def spread_weights_barycentric_polygon(obj, vertex_group_name, found_vertices):
     """
     Spread weights across vertices within a convex polygon using Barycentric interpolation.
     """
@@ -65,19 +65,16 @@ def spread_weights_barycentric_polygon(obj, vertex_group_name, vertex_indices):
     bm = bmesh.new()
     bm.from_mesh(mesh)
 
+    # Ensure the BMesh is up-to-date
+    bm.verts.ensure_lookup_table()
+
     # Retrieve the coordinates and weights for the polygon vertices in advance
-    polygon_vertices = [np.array(bm.verts[i].co) for i in vertex_indices]
-    vertex_weights = []
+    polygon_vertices = [np.array(bm.verts[i["index"]].co) for i in found_vertices]
+    vertex_weights = [i["weight"] for i in found_vertices]
     
-    for idx in vertex_indices:
-        try:
-            weight = vertex_group.weight(idx)
-        except RuntimeError:
-            weight = 0.0
-        vertex_weights.append(weight)
-    
+    breakpoint() 
     # Perform triangulation only once
-    triangle_indices = triangulate_polygon(vertex_indices)
+    triangle_indices = triangulate_polygon(polygon_vertices)
 
     # Precompute the coordinates for all mesh vertices as NumPy arrays
     all_vertex_coords = np.array([np.array(vert.co) for vert in bm.verts])
@@ -88,15 +85,24 @@ def spread_weights_barycentric_polygon(obj, vertex_group_name, vertex_indices):
 
         # Loop over each triangle formed by the polygon triangulation
         for tri in triangle_indices:
-            v0, v1, v2 = [polygon_vertices[vertex_indices.index(idx)] for idx in tri]
-            
+            v0_info, v1_info, v2_info = tri
+            v0 = v0_info[0]
+            v1 = v1_info[0]
+            v2 = v2_info[0]
+
+            v0_coords = v0_info[1]
+            v1_coords = v1_info[1]
+            v2_coords = v2_info[1]
             # Calculate barycentric coordinates of vertex `v` with respect to triangle (v0, v1, v2)
             bary_coords = barycentric_coords(v, v0, v1, v2)
             
             # If the vertex is inside the triangle (barycentric coordinates >= 0)
             if np.all(bary_coords >= 0):
                 # Get the corresponding weights for the triangle vertices
-                w0, w1, w2 = [vertex_weights[vertex_indices.index(idx)] for idx in tri]
+
+                w0 = vertex_weights[v0_coords]
+                w1 = vertex_weights[v1_coords]
+                w2 = vertex_weights[v2_coords]
                 
                 # Perform interpolation using barycentric weights
                 interpolated_weight = (bary_coords[0] * w0 +
@@ -297,7 +303,8 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
         adjacency_list[v1].append(v2)
         adjacency_list[v2].append(v1)
 
-    connected_components = run_parallel_bfs(target_vertex_group, found_target_vertices, max_depth, adjacency_list)
+    #connected_components = run_parallel_bfs(target_vertex_group, found_target_vertices, max_depth, adjacency_list)
+    spread_weights_barycentric_polygon(target_mesh, source_vertex_group_name, found_target_vertices)
 
     target_bm.free()
 
