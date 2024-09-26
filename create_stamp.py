@@ -14,6 +14,39 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 
 
+from PIL import Image
+import numpy as np
+from scipy.ndimage import gaussian_filter
+
+def gaussian_sampler(low_res_image_path, upscale_factor=2, sigma=1.0):
+    # Open the low-res image
+    low_res_img = Image.open(low_res_image_path)
+    
+    # Convert image to numpy array
+    img_np = np.array(low_res_img)
+    
+    # Apply Gaussian filter to smooth the image
+    blurred_img_np = gaussian_filter(img_np, sigma=sigma)
+    
+    # Convert back to an image
+    blurred_img = Image.fromarray(np.uint8(blurred_img_np))
+    
+    # Calculate new size (upscale)
+    new_size = (low_res_img.size[0] * upscale_factor, low_res_img.size[1] * upscale_factor)
+    
+    # Upscale the image using bicubic interpolation
+    high_res_img = blurred_img.resize(new_size, Image.BICUBIC)
+    
+    return high_res_img
+
+# Example usage:
+high_res_image = gaussian_sampler('low_res_image.png', upscale_factor=4, sigma=1.5)
+high_res_image.show()  # To display the image
+high_res_image.save('high_res_image.png')  # Save the upscaled image
+
+
+
+
 #START
 
 def barycentric_coords(p, v0, v1, v2):
@@ -297,7 +330,11 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
         adjacency_list[v1].append(v2)
         adjacency_list[v2].append(v1)
 
-    connected_components = run_parallel_bfs(target_vertex_group, found_target_vertices, max_depth, adjacency_list)
+    #connected_components = run_parallel_bfs(target_vertex_group, found_target_vertices, max_depth, adjacency_list)
+    for dic in found_target_vertices:
+        idx = dic["index"]
+        weight = dic["weight"]
+        target_vertex_group.add([idx], weight,'REPLACE')
 
     target_bm.free()
 
