@@ -2,7 +2,9 @@ import bpy
 import mathutils
 import site
 import pip
+from mathutils import Color
 
+from collections import defaultdict
 pip.main(['install', 'numpy', '--target', site.USER_SITE])
 import bpy
 import bmesh
@@ -44,126 +46,7 @@ high_res_image = gaussian_sampler('low_res_image.png', upscale_factor=4, sigma=1
 high_res_image.show()  # To display the image
 high_res_image.save('high_res_image.png')  # Save the upscaled image
 
-
-
-
 #START
-
-def barycentric_coords(p, v0, v1, v2):
-    """
-    Calculate barycentric coordinates for point `p` in the triangle (v0, v1, v2).
-    """
-    v0v1 = v1 - v0
-    v0v2 = v2 - v0
-    v0p = p - v0
-
-    # Compute dot products using NumPy vectorization
-    d00 = np.dot(v0v1, v0v1)
-    d01 = np.dot(v0v1, v0v2)
-    d11 = np.dot(v0v2, v0v2)
-    d20 = np.dot(v0p, v0v1)
-    d21 = np.dot(v0p, v0v2)
-
-    # Compute the denominator of the Barycentric formula
-    denom = d00 * d11 - d01 * d01
-    if denom == 0:
-        return np.array([0, 0, 0])  # Degenerate triangle case
-
-    # Calculate the Barycentric coordinates
-    v = (d11 * d20 - d01 * d21) / denom
-    w = (d00 * d21 - d01 * d20) / denom
-    u = 1.0 - v - w
-
-    return np.array([u, v, w])
-
-def triangulate_polygon(vertices):
-    """
-    Triangulate a convex polygon into triangles using a fan triangulation method.
-    Assumes vertices are in clockwise or counterclockwise order.
-    """
-    triangles = []
-    for i in range(1, len(vertices) - 1):
-        triangles.append([vertices[0], vertices[i], vertices[i + 1]])
-    return triangles
-
-def spread_weights_barycentric_polygon(obj, vertex_group_name, vertex_indices):
-    """
-    Spread weights across vertices within a convex polygon using Barycentric interpolation.
-    """
-    # Access the vertex group
-    vertex_group = obj.vertex_groups[vertex_group_name]
-    
-    # Get the mesh and initialize BMesh
-    mesh = obj.data
-    bm = bmesh.new()
-    bm.from_mesh(mesh)
-
-    # Retrieve the coordinates and weights for the polygon vertices in advance
-    polygon_vertices = [np.array(bm.verts[i].co) for i in vertex_indices]
-    vertex_weights = []
-    
-    for idx in vertex_indices:
-        try:
-            weight = vertex_group.weight(idx)
-        except RuntimeError:
-            weight = 0.0
-        vertex_weights.append(weight)
-    
-    # Perform triangulation only once
-    triangle_indices = triangulate_polygon(vertex_indices)
-
-    # Precompute the coordinates for all mesh vertices as NumPy arrays
-    all_vertex_coords = np.array([np.array(vert.co) for vert in bm.verts])
-
-    # Iterate through all vertices and check if they are inside the polygon's triangles
-    for vert in bm.verts:
-        v = np.array(vert.co)
-
-        # Loop over each triangle formed by the polygon triangulation
-        for tri in triangle_indices:
-            v0, v1, v2 = [polygon_vertices[vertex_indices.index(idx)] for idx in tri]
-            
-            # Calculate barycentric coordinates of vertex `v` with respect to triangle (v0, v1, v2)
-            bary_coords = barycentric_coords(v, v0, v1, v2)
-            
-            # If the vertex is inside the triangle (barycentric coordinates >= 0)
-            if np.all(bary_coords >= 0):
-                # Get the corresponding weights for the triangle vertices
-                w0, w1, w2 = [vertex_weights[vertex_indices.index(idx)] for idx in tri]
-                
-                # Perform interpolation using barycentric weights
-                interpolated_weight = (bary_coords[0] * w0 +
-                                       bary_coords[1] * w1 +
-                                       bary_coords[2] * w2)
-                
-                # Assign the interpolated weight to the vertex group
-                vertex_group.add([vert.index], interpolated_weight, 'REPLACE')
-                break  # Skip other triangles since we found a match for this vertex
-
-    # Update BMesh and free memory
-    bm.to_mesh(mesh)
-    bm.free()
-
-# Example usage
-# Select the object and the vertex group to apply the barycentric interpolation
-#obj = bpy.context.object
-#vertex_group_name = "Group"  # Replace with your vertex group name
-#
-## Specify the indices of the polygon's vertices (replace with actual vertex indices)
-#polygon_vertex_indices = [0, 1, 2, 3, 4]  # Example indices for a convex polygon
-
-# Apply barycentric interpolation of weights within the polygon
-#spread_weights_barycentric_polygon(obj, vertex_group_name, polygon_vertex_indices)
-
-
-#END
-
-
-
-
-
-
-
 
 
 
@@ -235,6 +118,7 @@ def arrange_all_groups(source_mesh_name, bm):
 
 def arrange_vertex_group(source_mesh_name, bm, vertex_group_name):
     source_obj = bpy.data.objects[source_mesh_name]
+
     vertex_group = source_obj.vertex_groups.get(vertex_group_name)
     vertex_group_dict = {}
     #flip normals
@@ -248,17 +132,17 @@ def arrange_vertex_group(source_mesh_name, bm, vertex_group_name):
     #copy vertices
     bm.from_mesh(source_obj.data)
     # Loop through all vertices to get all non zero weights and their vertex coordinates
-    #for v in mesh_data.vertices:
     for v in bm.verts:
         try:
             if is_in_vertex_group(v.index, vertex_group):
                 # Assign the weight to the target group
                 weight = vertex_group.weight(v.index)
+                v_world = source_obj.matrix_world @ v.co
                 if vertex_group_name in vertex_group_dict:
-                    vertex_group_dict[vertex_group_name][v] = weight
+                    vertex_group_dict[vertex_group_name][v.index] = {"weight": weight, "world": v_world, "vertex": v}
                 else:
                     vertex_group_dict[vertex_group_name] = {}
-                    vertex_group_dict[vertex_group_name][v] = weight
+                    vertex_group_dict[vertex_group_name][v.index] = {"weight": weight, "world": v_world, "vertex": v}
         except RuntimeError as e:
             #Error: Vertex not in group
             continue
@@ -272,109 +156,73 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
     empty_obj = bpy.data.objects[empty_name]
     # Get the world coordinates of the empty object
     empty_world_coords = empty_obj.matrix_world.translation
-
     #for source_vertex_group_name in vertex_group_dictionaries:
     center_point = find_center(source_vertex_group_name, source_mesh)
 
+    # 1) create list of all non zero vertices for a vertex group
     source_selected_vertices = vertex_group_dictionaries[source_vertex_group_name]
+    vertices = [source_selected_vertices[i]["vertex"] for i in source_selected_vertices]
+    edges = [e.vertices[:] for e in source_mesh.edges if e.key[0] in vertices or e.key[1] in vertices]
+    #create graph
+    graph = defaultdict(list)
+    for v1, v2 in edges:
+        graph[v1].append(v2)
+        graph[v2].append(v1)
 
-    distance_dict = distance_from_center(center_point, source_selected_vertices, source_mesh)
-    #now you can make the newly created empty as your center and base everything off of that 
-   
-    if not source_mesh or not target_mesh:
-        print("Source or target object not found.")
-        sys.exit()
 
-    target_bm = bmesh.new()
-    target_bm.from_mesh(target_mesh.data)
-    boundary_verts = [] #on the outer edge of the mesh
+    # 2) get the smallest rectangle that encompases those vertices 
 
-    for f in target_bm.faces:
-        face_normal = f.normal
-        for v in f.verts:
-            # Compare vertex normal with face normal
-            if v.normal.dot(face_normal) > 0:
-                world_vertex_location = target_mesh.matrix_world @ v.co
-                boundary_verts.append((world_vertex_location, v.index))
 
-    #create kd tree for easier vertex index location targeting based on the hit location
-    # Create a KDTree with the number of vertices
-    size = len(boundary_verts)
-    kd = KDTree(size)
-    # Insert all vertices into the KDTree
-    for tup in boundary_verts:
-        vert = tup[0]
-        index = tup[1]
-        kd.insert(vert, index)
-    # Balance the KDTree after insertion
-    kd.balance()
+#start
 
-    selected_vertex_group = vertex_group_dictionaries[source_vertex_group_name]
-    target_vertex_group = target_mesh.vertex_groups.get(source_vertex_group_name)
-    found_target_vertices = []
-    for vertex in distance_dict:
-        #get new positions based on distance_dict
-        metadata = distance_dict[vertex]
-        distance = metadata["distance"]
-        weight = metadata["weight"]
-        target_estimate = empty_world_coords + distance
-        co, index, dist = kd.find(target_estimate)
-        found_target_vertices.append({"index": index, "weight": weight})
+def create_color_attribute(selected_vertices, mesh):
+    color_layer = mesh.color_attributes.get("WeightColor")
+    if not color_layer:
+        color_layer = mesh.color_attributes.new(name="WeightColor", type='FLOAT_COLOR', domain='POINT')
+
+    for idx in selected_vertices:
+        weight = selected_vertices[idx]["weight"]
+        color_layer.data[idx].color = weight_to_rgb(weight)
+
+    # Update the mesh to reflect the changes
+    mesh.update()
+
+
+#end
+
+
+def weight_to_rgb(weight):
+    """
+    Converts a weight (0.0 - 1.0) to an RGB value using Blender's weight paint color gradient.
     
-    max_depth = 15
-
-    # Pre-build adjacency list using edges
-    adjacency_list = [[] for _ in range(len(target_mesh.data.vertices))]
-    for edge in target_mesh.data.edges:
-        v1, v2 = edge.vertices
-        adjacency_list[v1].append(v2)
-        adjacency_list[v2].append(v1)
-
-    #connected_components = run_parallel_bfs(target_vertex_group, found_target_vertices, max_depth, adjacency_list)
-    for dic in found_target_vertices:
-        idx = dic["index"]
-        weight = dic["weight"]
-        target_vertex_group.add([idx], weight,'REPLACE')
-
-    target_bm.free()
-
-def paint_connected_vertices(target_vertex_group, start_vertex_index, max_depth, weight, adjacency_list):
-    # Initialize BFS
-    queue = deque([(start_vertex_index, 0)])
-    visited = {start_vertex_index}
+    :param weight: A float value between 0.0 (blue) and 1.0 (red).
+    :return: An (r, g, b) tuple with values between 0.0 and 1.0.
+    """
+    # Clamp weight between 0.0 and 1.0 to avoid out-of-bounds issues
+    weight = max(0.0, min(weight, 1.0))
     
-    # Perform BFS
-    while queue:
-        vertex_index, depth = queue.popleft()
-        
-        if depth >= max_depth:
-            continue
-        
-        for neighbor_index in adjacency_list[vertex_index]:
-            if neighbor_index not in visited:
-                visited.add(neighbor_index)
-                queue.append((neighbor_index, depth + 1))
-
-    for idx in visited:
-        target_vertex_group.add([idx], weight,'REPLACE')
+    # Create a color object from Blender's default weight color ramp
+    color_ramp = bpy.data.node_groups['Shader Nodetree'].nodes.new('ShaderNodeValToRGB')
     
-    return visited
-
-# Function to handle each parallel task
-def bfs_task(params):
-    target_vertex_group, start_vertex_index, max_depth, weight, adjacency_list = params
-    return paint_connected_vertices(target_vertex_group, start_vertex_index, max_depth, weight, adjacency_list)
-
-# Example usage of ThreadPoolExecutor for parallel execution
-def run_parallel_bfs(target_vertex_group, found_target_vertices, max_depth, adjacency_list):
-    # Create a list of parameters to pass to each thread
-    params_list = [(target_vertex_group, d["index"], max_depth, d["weight"], adjacency_list) for d in found_target_vertices]
+    # Set up a color ramp with Blender-like weight colors
+    color_ramp.color_ramp.interpolation = 'LINEAR'
     
-    with ThreadPoolExecutor() as executor:
-        # Run the BFS function in parallel for each start vertex
-        results = list(executor.map(bfs_task, params_list))
+    # Define colors (Blender weight paint standard)
+    color_ramp.color_ramp.elements.new(0.0)
+    color_ramp.color_ramp.elements.new(1.0)
     
-    return results
+    # Assign weight colors (blue -> green -> red)
+    color_ramp.color_ramp.elements[0].color = (0.0, 0.0, 1.0, 1.0)  # Blue (weight 0)
+    color_ramp.color_ramp.elements[1].color = (1.0, 0.0, 0.0, 1.0)  # Red (weight 1)
+    
+    # Evaluate color ramp at the given weight
+    rgb = color_ramp.color_ramp.evaluate(weight)
+    
+    # Cleanup created nodes
+    bpy.data.node_groups.remove(color_ramp.id_data)
+    
+    return rgb  # Return RGB values 
+
 
 
 def mark_location(vertex):
