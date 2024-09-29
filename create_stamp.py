@@ -3,7 +3,7 @@ import mathutils
 import site
 import pip
 from mathutils import Color
-
+from pathlib import Path
 from collections import defaultdict
 pip.main(['install', 'numpy', '--target', site.USER_SITE])
 import bpy
@@ -161,19 +161,11 @@ def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_
 
     # 1) create list of all non zero vertices for a vertex group
     source_selected_vertices = vertex_group_dictionaries[source_vertex_group_name]
-    vertices = [source_selected_vertices[i]["vertex"] for i in source_selected_vertices]
-    edges = [e.vertices[:] for e in source_mesh.edges if e.key[0] in vertices or e.key[1] in vertices]
-    #create graph
-    graph = defaultdict(list)
-    for v1, v2 in edges:
-        graph[v1].append(v2)
-        graph[v2].append(v1)
 
 
     # 2) get the smallest rectangle that encompases those vertices 
 
 
-#start
 
 def create_color_attribute(selected_vertices, mesh):
     color_layer = mesh.color_attributes.get("WeightColor")
@@ -186,9 +178,6 @@ def create_color_attribute(selected_vertices, mesh):
 
     # Update the mesh to reflect the changes
     mesh.update()
-
-
-#end
 
 
 def weight_to_rgb(weight):
@@ -222,6 +211,98 @@ def weight_to_rgb(weight):
     bpy.data.node_groups.remove(color_ramp.id_data)
     
     return rgb  # Return RGB values 
+
+
+
+ # Saving user settings
+def bake_weights(vertex_group_name, obj):
+    # Ensure the object has a material
+    if len(obj.data.materials) == 0:
+        mat = bpy.data.materials.new(name="Baking_Material")
+        obj.data.materials.append(mat)
+    else:
+        mat = obj.data.materials[0]
+
+    mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+    # Clear existing nodes
+    for node in nodes:
+        nodes.remove(node)
+
+    # Create new nodes for baking
+    output_node = nodes.new(type="ShaderNodeOutputMaterial")
+    diffuse_node = nodes.new(type="ShaderNodeBsdfDiffuse")
+    vc_node = nodes.new(type="ShaderNodeVertexColor")
+    texture_node = nodes.new(type="ShaderNodeTexImage")
+
+    # Set up the node tree, connect the nodes
+    mat.node_tree.links.new(vc_node.outputs['Color'], diffuse_node.inputs['Color'])
+    mat.node_tree.links.new(diffuse_node.outputs['BSDF'], output_node.inputs['Surface'])
+    mat.node_tree.links.new(texture_node.outputs['Color'], diffuse_node.inputs['Color'])
+
+
+    scene = bpy.context.scene
+    default_render_engine = scene.render.engine
+    default_view_transform = scene.view_settings.view_transform
+    default_display_device = scene.display_settings.display_device
+    default_file_format = scene.render.image_settings.file_format
+    default_color_mode = scene.render.image_settings.color_mode
+    default_codec = scene.render.image_settings.exr_codec
+    default_denoise = scene.cycles.use_denoising
+    default_compute_device = scene.cycles.device
+    default_scene_samples = scene.cycles.samples
+
+    render_resolution = 2048
+
+    try:
+        # Prepare baking
+        scene.render.engine = 'CYCLES'
+        scene.cycles.samples = 128
+        scene.cycles.use_denoising = False
+        scene.cycles.device = 'GPU'
+
+        bpy.ops.object.select_all(action='DESELECT')
+        output_path = Path().cwd() / f"{vertex_group_name}.exr"
+        texture_image = bpy.data.images.new(
+            name=vertex_group_name, width=render_resolution, height=render_resolution, alpha=False, float_buffer=True
+        )
+
+        texture_image.filepath_raw = output_path
+        scene.render.image_settings.file_format = 'OPEN_EXR'
+        scene.render.image_settings.color_mode = 'RGB'
+        scene.render.image_settings.exr_codec = 'NONE'
+
+        texture_image.use_half_precision = False
+        texture_image.colorspace_settings.is_data = True
+        #texture_image.colorspace_settings.name = 'Non-Color'
+        texture_node.image = texture_image
+        texture_node.select = True
+
+        # Bake
+        bpy.ops.object.bake(type='EMIT')
+        # save as render so we have more control over compression settings
+        texture_image.save_render(
+            filepath=bpy.path.abspath(output_path), scene=scene, quality=0
+        )
+        # Removes the dirty flag, so the image doesn't have to be saved again by the user.
+        texture_image.pack()
+        texture_image.unpack(method='REMOVE')
+
+    except BaseException as Err:
+        print("ERROR")
+
+    finally:
+        scene.render.image_settings.file_format = default_file_format
+        scene.render.image_settings.color_mode = default_color_mode
+        scene.render.image_settings.exr_codec = default_codec
+        scene.cycles.samples = default_scene_samples
+        scene.display_settings.display_device = default_display_device
+        scene.view_settings.view_transform = default_view_transform
+        scene.cycles.use_denoising = default_denoise
+        scene.cycles.device = default_compute_device
+        scene.render.engine = default_render_engine
+
+
 
 
 
