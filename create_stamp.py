@@ -1,87 +1,11 @@
 import bpy
-import mathutils
-import site
-import pip
-from mathutils import Color
 from pathlib import Path
-from collections import defaultdict
-pip.main(['install', 'numpy', '--target', site.USER_SITE])
-import bpy
 import bmesh
-import sys
-from mathutils import Vector
-from mathutils.kdtree import KDTree
-from collections import deque
-from concurrent.futures import ThreadPoolExecutor
-import numpy as np
-
-
-from PIL import Image
-import numpy as np
-from scipy.ndimage import gaussian_filter
-
-def gaussian_sampler(low_res_image_path, upscale_factor=2, sigma=1.0):
-    # Open the low-res image
-    low_res_img = Image.open(low_res_image_path)
-    
-    # Convert image to numpy array
-    img_np = np.array(low_res_img)
-    
-    # Apply Gaussian filter to smooth the image
-    blurred_img_np = gaussian_filter(img_np, sigma=sigma)
-    
-    # Convert back to an image
-    blurred_img = Image.fromarray(np.uint8(blurred_img_np))
-    
-    # Calculate new size (upscale)
-    new_size = (low_res_img.size[0] * upscale_factor, low_res_img.size[1] * upscale_factor)
-    
-    # Upscale the image using bicubic interpolation
-    high_res_img = blurred_img.resize(new_size, Image.BICUBIC)
-    
-    return high_res_img
-
-# Example usage:
-high_res_image = gaussian_sampler('low_res_image.png', upscale_factor=4, sigma=1.5)
-high_res_image.show()  # To display the image
-high_res_image.save('high_res_image.png')  # Save the upscaled image
-
-#START
-
 
 
 #1) get the weights for each vertex in a vertex groups for a single bone 
 def is_in_vertex_group(vert_index, vert_group):
       return vert_group.weight(vert_index) > 0
-
-def find_center(vertex_group_name, mesh):
-    context = bpy.context
-    ob = mesh
-    bpy.ops.object.empty_add(location=(0, 0, 0))
-    mt = context.object
-    mt.name = f"{ob.name}_{vertex_group_name}"
-    cl = mt.constraints.new('COPY_LOCATION')
-    cl.target = ob
-    cl.subtarget = vertex_group_name
-    #To go to any next step that requires the empties to be at the constrained locations throw in a scene update to ensure matrices etc are up to date.
-    dg = context.evaluated_depsgraph_get()
-    dg.update()
-    #get global location
-    loc = mt.matrix_world.translation # global location of emtpy
-    # remove the mt
-    bpy.data.objects.remove(mt)
-    return loc
-
-
-def distance_from_center(center, vertex_island_dict, source_mesh):
-    distance_dict = {}
-    for v in vertex_island_dict:
-        vector = (source_mesh.matrix_world @ v.co - center)
-        #distance = vector.length
-        distance = vector
-        weight = vertex_island_dict[v]
-        distance_dict[v] = {"distance": distance, "weight": weight}
-    return distance_dict
 
 
 def arrange_all_groups(source_mesh_name, bm):
@@ -150,35 +74,27 @@ def arrange_vertex_group(source_mesh_name, bm, vertex_group_name):
 
 # this function is meant to be used in a for loop, looping through all of the bones/vertex groups on an armature/meshG
 # for mods, the bone names should be the same for both armatures
-def remap_vertex_groups(vertex_group_dictionaries, source_armature_name, target_armature_name, source_mesh_name, target_mesh_name, source_vertex_group_name, empty_name):
-    target_mesh = bpy.data.objects[target_mesh_name]
+def create_weight_stamp(vertex_group_dictionaries, source_mesh_name, source_vertex_group_name, output_path):
     source_mesh = bpy.data.objects[source_mesh_name]
-    empty_obj = bpy.data.objects[empty_name]
-    # Get the world coordinates of the empty object
-    empty_world_coords = empty_obj.matrix_world.translation
-    #for source_vertex_group_name in vertex_group_dictionaries:
-    center_point = find_center(source_vertex_group_name, source_mesh)
-
     # 1) create list of all non zero vertices for a vertex group
     source_selected_vertices = vertex_group_dictionaries[source_vertex_group_name]
-
-
-    # 2) get the smallest rectangle that encompases those vertices 
-
+    # create color attribute for mesh
+    create_color_attribute(source_selected_vertices, source_mesh)
+    #bake attributes to an image
+    bake_weights(source_vertex_group_name, source_mesh, output_path)
 
 
 def create_color_attribute(selected_vertices, mesh):
-    color_layer = mesh.color_attributes.get("WeightColor")
+    color_layer = mesh.data.color_attributes.get("WeightColor")
     if not color_layer:
-        color_layer = mesh.color_attributes.new(name="WeightColor", type='FLOAT_COLOR', domain='POINT')
+        color_layer = mesh.data.color_attributes.new(name="WeightColor", type='FLOAT_COLOR', domain='POINT')
 
     for idx in selected_vertices:
         weight = selected_vertices[idx]["weight"]
         color_layer.data[idx].color = weight_to_rgb(weight)
 
     # Update the mesh to reflect the changes
-    mesh.update()
-
+    mesh.data.update()
 
 def weight_to_rgb(weight):
     """
@@ -190,32 +106,34 @@ def weight_to_rgb(weight):
     # Clamp weight between 0.0 and 1.0 to avoid out-of-bounds issues
     weight = max(0.0, min(weight, 1.0))
     
-    # Create a color object from Blender's default weight color ramp
-    color_ramp = bpy.data.node_groups['Shader Nodetree'].nodes.new('ShaderNodeValToRGB')
+    # Create a temporary material to access the color ramp node
+    temp_material = bpy.data.materials.new(name="TempMaterial")
+    temp_material.use_nodes = True
+    nodes = temp_material.node_tree.nodes
+    links = temp_material.node_tree.links
+    
+    # Create a ColorRamp node
+    color_ramp_node = nodes.new(type="ShaderNodeValToRGB")
+    color_ramp_node.location = (0, 0)
     
     # Set up a color ramp with Blender-like weight colors
-    color_ramp.color_ramp.interpolation = 'LINEAR'
+    color_ramp_node.color_ramp.interpolation = 'LINEAR'
     
-    # Define colors (Blender weight paint standard)
-    color_ramp.color_ramp.elements.new(0.0)
-    color_ramp.color_ramp.elements.new(1.0)
+    # Define the color stops (blue -> green -> red)
+    color_ramp_node.color_ramp.elements[0].color = (0.0, 0.0, 1.0, 1.0)  # Blue (weight 0)
+    color_ramp_node.color_ramp.elements[1].color = (1.0, 0.0, 0.0, 1.0)  # Red (weight 1)
     
-    # Assign weight colors (blue -> green -> red)
-    color_ramp.color_ramp.elements[0].color = (0.0, 0.0, 1.0, 1.0)  # Blue (weight 0)
-    color_ramp.color_ramp.elements[1].color = (1.0, 0.0, 0.0, 1.0)  # Red (weight 1)
+    # Evaluate the color ramp at the given weight
+    rgb = color_ramp_node.color_ramp.evaluate(weight)
     
-    # Evaluate color ramp at the given weight
-    rgb = color_ramp.color_ramp.evaluate(weight)
+    # Clean up: remove the temporary material
+    bpy.data.materials.remove(temp_material, do_unlink=True)
     
-    # Cleanup created nodes
-    bpy.data.node_groups.remove(color_ramp.id_data)
-    
-    return rgb  # Return RGB values 
-
+    return rgb
 
 
  # Saving user settings
-def bake_weights(vertex_group_name, obj):
+def bake_weights(vertex_group_name, obj, output_path):
     # Ensure the object has a material
     if len(obj.data.materials) == 0:
         mat = bpy.data.materials.new(name="Baking_Material")
@@ -262,7 +180,8 @@ def bake_weights(vertex_group_name, obj):
         scene.cycles.device = 'GPU'
 
         bpy.ops.object.select_all(action='DESELECT')
-        output_path = Path().cwd() / f"{vertex_group_name}.exr"
+        obj.select_set(True)  # Select the object to be baked
+        bpy.context.view_layer.objects.active = obj  # Make it the active object
         texture_image = bpy.data.images.new(
             name=vertex_group_name, width=render_resolution, height=render_resolution, alpha=False, float_buffer=True
         )
@@ -277,7 +196,7 @@ def bake_weights(vertex_group_name, obj):
         #texture_image.colorspace_settings.name = 'Non-Color'
         texture_node.image = texture_image
         texture_node.select = True
-
+        
         # Bake
         bpy.ops.object.bake(type='EMIT')
         # save as render so we have more control over compression settings
@@ -287,8 +206,9 @@ def bake_weights(vertex_group_name, obj):
         # Removes the dirty flag, so the image doesn't have to be saved again by the user.
         texture_image.pack()
         texture_image.unpack(method='REMOVE')
-
-    except BaseException as Err:
+        
+    except BaseException as e:
+        print(e)
         print("ERROR")
 
     finally:
@@ -301,9 +221,6 @@ def bake_weights(vertex_group_name, obj):
         scene.cycles.use_denoising = default_denoise
         scene.cycles.device = default_compute_device
         scene.render.engine = default_render_engine
-
-
-
 
 
 def mark_location(vertex):
@@ -331,8 +248,9 @@ target_armature_name = "Root.001"
 source_vertex_group_name = "C_nose_Top"
 empty_name = "Empty"
 bm = bmesh.new() #bmesh where you will put copy of source vertex
+output_path = str(Path("E:/MODS/scripts") / "weight_paint_stamp" / f"{source_vertex_group_name}.exr")
 #vertex_group_dictionaries = arrange_all_groups(source_mesh_name, bm)
 vertex_group_dictionary = arrange_vertex_group(source_mesh_name, bm, source_vertex_group_name)
-remap_vertex_groups(vertex_group_dictionary, source_armature_name, target_armature_name, source_mesh_name, target_mesh_name, source_vertex_group_name, empty_name)
+create_weight_stamp(vertex_group_dictionary, source_mesh_name, source_vertex_group_name, output_path)
 
 
