@@ -81,10 +81,50 @@ def create_weight_stamp(vertex_group_dictionaries, source_mesh_name, source_vert
     # create color attribute for mesh
     create_color_attribute(source_selected_vertices, source_mesh)
     #bake attributes to an image
-    bake_weights(source_vertex_group_name, source_mesh, output_path)
+    selected_verts_indices = [i for i in source_selected_vertices]
+    
+    bpy.context.view_layer.objects.active = source_mesh
+    source_mesh.select_set(True)
+
+    bpy.ops.object.duplicate_move(
+        OBJECT_OT_duplicate={"linked": False, "mode": 'TRANSLATION'}, 
+        TRANSFORM_OT_translate={"value": (0, 0, 0)}
+    )
+
+    # Get the new active object, which is the duplicated one
+    duplicated_object = bpy.context.active_object
+    #new_obj = create_object_from_vertices(duplicated_object, selected_verts_indices)
+    #bake_weights(source_vertex_group_name, new_obj, output_path)
+    
+    #delete new object
+   # bpy.context.view_layer.objects.active = new_obj
+   # new_obj.select_set(True)
+   # bpy.ops.object.delete()
+
+def copy_color_attribute(selected_vertices, source_mesh, target_mesh, old_to_new_verts):
+    # Iterate over and remove all color attributes
+    while len(target_mesh.data.color_attributes) > 0:
+        target_mesh.data.color_attributes.remove(target_mesh.data.color_attributes[0])
+
+    target_color_layer = target_mesh.data.color_attributes.get("WeightColor")
+    if not target_color_layer:
+        target_color_layer = target_mesh.data.color_attributes.new(name="WeightColor", type='FLOAT_COLOR', domain='POINT')
+
+    for idx in selected_vertices:
+        source_color_layer = source_mesh.data.color_attributes 
+        here = source_mesh.data.vertices[idx]
+        #new_vert = old_to_new_verts[source_mesh.data.vertices[idx]]
+        #target_color_layer.data[new_vert.index].color = source_color_layer.data[idx].color
+
+    # Update the source_mesh to reflect the changes
+    target_mesh.data.update()
 
 
 def create_color_attribute(selected_vertices, mesh):
+    # Iterate over and remove all color attributes
+    while len(mesh.data.color_attributes) > 0:
+        mesh.data.color_attributes.remove(mesh.data.color_attributes[0])
+
     color_layer = mesh.data.color_attributes.get("WeightColor")
     if not color_layer:
         color_layer = mesh.data.color_attributes.new(name="WeightColor", type='FLOAT_COLOR', domain='POINT')
@@ -118,10 +158,19 @@ def weight_to_rgb(weight):
     
     # Set up a color ramp with Blender-like weight colors
     color_ramp_node.color_ramp.interpolation = 'LINEAR'
-    
-    # Define the color stops (blue -> green -> red)
-    color_ramp_node.color_ramp.elements[0].color = (0.0, 0.0, 1.0, 1.0)  # Blue (weight 0)
-    color_ramp_node.color_ramp.elements[1].color = (1.0, 0.0, 0.0, 1.0)  # Red (weight 1)
+
+    # Define the color stops
+    # Add Blue at position 0.0
+    blue_element = color_ramp_node.color_ramp.elements[0]
+    blue_element.color = (0.0, 0.0, 1.0, 1.0)  # Blue (RGBA)
+
+    # Add Red at position 1.0
+    red_element = color_ramp_node.color_ramp.elements[1]
+    red_element.color = (1.0, 0.0, 0.0, 1.0)  # Red 
+
+    # Add Green at position 0.5
+    green_element = color_ramp_node.color_ramp.elements.new(0.5)
+    green_element.color = (0.0, 1.0, 0.0, 1.0)  # Green (RGBA)
     
     # Evaluate the color ramp at the given weight
     rgb = color_ramp_node.color_ramp.evaluate(weight)
@@ -150,13 +199,12 @@ def bake_weights(vertex_group_name, obj, output_path):
     # Create new nodes for baking
     output_node = nodes.new(type="ShaderNodeOutputMaterial")
     diffuse_node = nodes.new(type="ShaderNodeBsdfDiffuse")
-    vc_node = nodes.new(type="ShaderNodeVertexColor")
+    vertex_color_node = nodes.new(type="ShaderNodeVertexColor")
     texture_node = nodes.new(type="ShaderNodeTexImage")
 
     # Set up the node tree, connect the nodes
-    mat.node_tree.links.new(vc_node.outputs['Color'], diffuse_node.inputs['Color'])
+    mat.node_tree.links.new(vertex_color_node.outputs['Color'], diffuse_node.inputs['Color'])
     mat.node_tree.links.new(diffuse_node.outputs['BSDF'], output_node.inputs['Surface'])
-    mat.node_tree.links.new(texture_node.outputs['Color'], diffuse_node.inputs['Color'])
 
 
     scene = bpy.context.scene
@@ -198,7 +246,15 @@ def bake_weights(vertex_group_name, obj, output_path):
         texture_node.select = True
         
         # Bake
-        bpy.ops.object.bake(type='EMIT')
+        # Set the bake type to 'DIFFUSE'
+        bpy.context.scene.cycles.bake_type = 'DIFFUSE'
+
+        # Disable Direct and Indirect influences, only leaving Color enabled
+        bpy.context.scene.render.bake.use_pass_direct = False
+        bpy.context.scene.render.bake.use_pass_indirect = False
+        bpy.context.scene.render.bake.use_pass_color = True
+
+        bpy.ops.object.bake(type='DIFFUSE')
         # save as render so we have more control over compression settings
         texture_image.save_render(
             filepath=bpy.path.abspath(output_path), scene=scene, quality=0
@@ -229,6 +285,52 @@ def mark_location(vertex):
 def get_vertex_groups(mesh_name):
     vertex_groups = bpy.data.objects[mesh_name].vertex_groups
     return vertex_groups
+
+def create_object_from_vertices(obj, selected_verts_indices):
+    # Ensure the object is in object mode
+    bpy.ops.object.mode_set(mode='OBJECT')
+    
+    # Get the mesh data and create a BMesh instance from the existing mesh
+    mesh = obj.data
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    
+    # Duplicate only the selected vertices
+    new_bm = bmesh.new()
+    
+    # Create a mapping from old vertices to new vertices
+    old_to_new_verts = {}
+    
+    # Copy selected vertices and their edges/faces
+    for vert in bm.verts:
+        if vert.index in selected_verts_indices:
+            new_vert = new_bm.verts.new(vert.co)
+            old_to_new_verts[vert] = new_vert
+
+    # Copy faces and edges involving the selected vertices
+    for face in bm.faces:
+        if all(v.index in selected_verts_indices for v in face.verts):
+            new_face_verts = [old_to_new_verts[v] for v in face.verts]
+            new_bm.faces.new(new_face_verts)
+            
+    # Ensure the new mesh is valid and remove degenerate geometry
+    new_bm.normal_update()
+    new_bm.to_mesh(mesh)
+    
+    # Create a new mesh object from the BMesh
+    new_mesh = bpy.data.meshes.new(name="New_Object_Mesh")
+    new_bm.to_mesh(new_mesh)
+    new_bm.free()
+
+    # Create a new object for the duplicated vertices
+    new_obj = bpy.data.objects.new("New_Object", new_mesh)
+    bpy.context.collection.objects.link(new_obj)
+
+    # Ensure the object has the same color attributes as the original
+    copy_color_attribute(selected_verts_indices, obj, new_obj, old_to_new_verts)
+    
+    return new_obj
+
 
 #source_mesh_name = "source"
 #target_mesh_name = "target"
