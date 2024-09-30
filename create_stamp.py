@@ -93,31 +93,52 @@ def create_weight_stamp(vertex_group_dictionaries, source_mesh_name, source_vert
 
     # Get the new active object, which is the duplicated one
     duplicated_object = bpy.context.active_object
-    #new_obj = create_object_from_vertices(duplicated_object, selected_verts_indices)
-    #bake_weights(source_vertex_group_name, new_obj, output_path)
+
+    delete_unwanted_vertices(duplicated_object, selected_verts_indices)
+
+    #redo UV maps
+    bpy.context.view_layer.objects.active = duplicated_object
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.uv.unwrap(method='ANGLE_BASED', margin=0)
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    bake_weights(source_vertex_group_name, duplicated_object, output_path)
     
     #delete new object
-   # bpy.context.view_layer.objects.active = new_obj
-   # new_obj.select_set(True)
-   # bpy.ops.object.delete()
+    bpy.context.view_layer.objects.active = duplicated_object
+    duplicated_object.select_set(True)
+    bpy.ops.object.delete()
 
-def copy_color_attribute(selected_vertices, source_mesh, target_mesh, old_to_new_verts):
-    # Iterate over and remove all color attributes
-    while len(target_mesh.data.color_attributes) > 0:
-        target_mesh.data.color_attributes.remove(target_mesh.data.color_attributes[0])
 
-    target_color_layer = target_mesh.data.color_attributes.get("WeightColor")
-    if not target_color_layer:
-        target_color_layer = target_mesh.data.color_attributes.new(name="WeightColor", type='FLOAT_COLOR', domain='POINT')
+def delete_unwanted_vertices(obj, vertices_to_keep):
+    # Set the object as active and switch to edit mode
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.mode_set(mode='EDIT')
 
-    for idx in selected_vertices:
-        source_color_layer = source_mesh.data.color_attributes 
-        here = source_mesh.data.vertices[idx]
-        #new_vert = old_to_new_verts[source_mesh.data.vertices[idx]]
-        #target_color_layer.data[new_vert.index].color = source_color_layer.data[idx].color
+    # Get the BMesh representation of the object in edit mode
+    bm = bmesh.from_edit_mesh(obj.data)
 
-    # Update the source_mesh to reflect the changes
-    target_mesh.data.update()
+    # Deselect all vertices
+    bpy.ops.mesh.select_all(action='DESELECT')
+
+    # Loop through all vertices in the mesh
+    for v in bm.verts:
+        if v.index not in vertices_to_keep:
+            # Select the vertices not in the list of vertices to keep
+            v.select = True
+        else:
+            v.select = False  # Deselect vertices that are to be kept
+
+    # Update the mesh to reflect the selections
+    bmesh.update_edit_mesh(obj.data)
+
+    # Delete the selected vertices
+    bpy.ops.mesh.delete(type='VERT')
+
+    # Switch back to object mode
+    bpy.ops.object.mode_set(mode='OBJECT')
+
 
 
 def create_color_attribute(selected_vertices, mesh):
@@ -285,51 +306,6 @@ def mark_location(vertex):
 def get_vertex_groups(mesh_name):
     vertex_groups = bpy.data.objects[mesh_name].vertex_groups
     return vertex_groups
-
-def create_object_from_vertices(obj, selected_verts_indices):
-    # Ensure the object is in object mode
-    bpy.ops.object.mode_set(mode='OBJECT')
-    
-    # Get the mesh data and create a BMesh instance from the existing mesh
-    mesh = obj.data
-    bm = bmesh.new()
-    bm.from_mesh(mesh)
-    
-    # Duplicate only the selected vertices
-    new_bm = bmesh.new()
-    
-    # Create a mapping from old vertices to new vertices
-    old_to_new_verts = {}
-    
-    # Copy selected vertices and their edges/faces
-    for vert in bm.verts:
-        if vert.index in selected_verts_indices:
-            new_vert = new_bm.verts.new(vert.co)
-            old_to_new_verts[vert] = new_vert
-
-    # Copy faces and edges involving the selected vertices
-    for face in bm.faces:
-        if all(v.index in selected_verts_indices for v in face.verts):
-            new_face_verts = [old_to_new_verts[v] for v in face.verts]
-            new_bm.faces.new(new_face_verts)
-            
-    # Ensure the new mesh is valid and remove degenerate geometry
-    new_bm.normal_update()
-    new_bm.to_mesh(mesh)
-    
-    # Create a new mesh object from the BMesh
-    new_mesh = bpy.data.meshes.new(name="New_Object_Mesh")
-    new_bm.to_mesh(new_mesh)
-    new_bm.free()
-
-    # Create a new object for the duplicated vertices
-    new_obj = bpy.data.objects.new("New_Object", new_mesh)
-    bpy.context.collection.objects.link(new_obj)
-
-    # Ensure the object has the same color attributes as the original
-    copy_color_attribute(selected_verts_indices, obj, new_obj, old_to_new_verts)
-    
-    return new_obj
 
 
 #source_mesh_name = "source"
