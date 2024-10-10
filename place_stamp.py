@@ -1,6 +1,6 @@
 import bpy
 import bmesh
-from mathutils import Vector, Matrix
+from mathutils import Vector, Matrix, kdtree
 
 # Function to create a transformation matrix (translation, scale, rotation)
 def create_transformation_matrix(location=(0, 0, 0), rotation=(0, 0, 0), scale=(1, 1, 1)):
@@ -61,14 +61,35 @@ def sample_texture_at_uv(image_plane, uv):
 
     return red, green, blue, alpha
 
+# Function to build a KDTree for the vertices of the object
+def build_kd_tree(bm):
+    kd = kdtree.KDTree(len(bm.verts))
+    for i, vert in enumerate(bm.verts):
+        kd.insert(vert.co, i)
+    kd.balance()
+    return kd
+
 # Function to project each pixel of the image texture onto the target object
-def project_texture_pixels_to_object(image_plane, target_object, image_plane_size=(1, 1), rotation=(0, 0, 0)):
+def project_texture_pixels_to_object(image_plane, target_object):
+    # Get the image plane's location, scale, and rotation
     image_plane_location = image_plane.location
-    image_plane_normal = image_plane.matrix_world.to_quaternion() @ Vector((0, 0, 1))
+    image_plane_scale = image_plane.scale
+    image_plane_matrix_world = image_plane.matrix_world
+    image_plane_normal = image_plane_matrix_world.to_quaternion() @ Vector((0, 0, 1))
 
-    plane_width, plane_height = image_plane_size
+    # Extract scale directly from the image plane
+    plane_width = image_plane_scale.x
+    plane_height = image_plane_scale.y
 
-    transformation_matrix = create_transformation_matrix(location=image_plane_location, rotation=rotation, scale=(plane_width, plane_height, 1))
+    # Extract rotation from the image plane's matrix
+    image_plane_rotation = image_plane_matrix_world.to_euler()
+
+    # Create transformation matrix based on the image plane's world position, rotation, and scale
+    transformation_matrix = create_transformation_matrix(
+        location=image_plane_location,
+        rotation=(image_plane_rotation.x, image_plane_rotation.y, image_plane_rotation.z),
+        scale=(plane_width, plane_height, 1)
+    )
 
     obj = target_object
     mesh = obj.data
@@ -80,6 +101,10 @@ def project_texture_pixels_to_object(image_plane, target_object, image_plane_siz
 
     vertex_group = obj.vertex_groups.new(name="WeightPaint")
 
+    # Build the KDTree from the vertices of the target object
+    kd_tree = build_kd_tree(bm)
+
+    # Find the image texture from the material of the image plane
     image_texture_node = image_plane.active_material.node_tree.nodes['Image Texture']
     image = image_texture_node.image
     width, height = image.size
@@ -106,18 +131,11 @@ def project_texture_pixels_to_object(image_plane, target_object, image_plane_siz
             # Use the red channel (or others) as the weight value
             weight_value = red
 
-            # Find the closest vertex on the target object
-            closest_vertex = None
-            min_distance = float('inf')
-            for vertex in bm.verts:
-                distance = (vertex.co - pixel_position_3d).length
-                if distance < min_distance:
-                    min_distance = distance
-                    closest_vertex = vertex
+            # Find the closest vertex on the target object using the KDTree
+            co, index, dist = kd_tree.find(pixel_position_3d)
 
             # Assign the weight to the closest vertex
-            if closest_vertex is not None:
-                vertex_group.add([closest_vertex.index], weight_value, 'REPLACE')
+            vertex_group.add([index], weight_value, 'REPLACE')
 
     # Update the mesh and free the BMesh
     bm.to_mesh(mesh)
@@ -127,6 +145,6 @@ def project_texture_pixels_to_object(image_plane, target_object, image_plane_siz
 image_plane = bpy.data.objects['ImagePlane']  # The object representing the image plane
 target_object = bpy.data.objects['TargetObject']  # The object to project the image onto
 
-image_plane_size = (2.0, 1.0)  # Size of the image plane in 3D space (width, height)
-project_texture_pixels_to_object(image_plane, target_object, image_plane_size=image_plane_size, rotation=(0.1, 0.2, 0.3))
+# Project texture pixels from the image plane onto the target object
+project_texture_pixels_to_object(image_plane, target_object)
 
