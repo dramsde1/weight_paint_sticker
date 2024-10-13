@@ -1,1 +1,1 @@
-# weight_paint_stamp
+# weight_paint_sticker
