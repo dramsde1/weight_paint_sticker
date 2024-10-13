@@ -1,7 +1,10 @@
 import bpy
 from pathlib import Path
 import bmesh
-
+import site
+import pip
+pip.main(['install', 'tqdm', '--target', site.USER_SITE])
+from tqdm import tqdm
 
 #1) get the weights for each vertex in a vertex groups for a single bone 
 def is_in_vertex_group(vert_index, vert_group):
@@ -315,8 +318,8 @@ source_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head00"
 #source_vertex_group_name = "C_nose_Top"
 bm = bmesh.new() #bmesh where you will put copy of source vertex
 vertex_group_dictionary = arrange_all_groups(source_mesh_name, bm)
-for source_vertex_group_name in vertex_group_dictionary:
-    output_path = str(Path("E:/MODS/scripts") / "weight_paint_stamp" / "stamps" / f"{source_vertex_group_name}.exr")
+for source_vertex_group_name in tqdm(vertex_group_dictionary):
+    output_path = str(Path("E:/MODS/scripts") / "weight_paint_stamp" / "stickers" / f"{source_vertex_group_name}.exr")
     create_weight_stamp(vertex_group_dictionary, source_mesh_name, source_vertex_group_name, output_path)
 
 
