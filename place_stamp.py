@@ -69,6 +69,36 @@ def build_kd_tree(bm):
     kd.balance()
     return kd
 
+
+def rgb_to_weight(rgb):
+    """
+    Converts an RGB value back to a weight (0.0 - 1.0) based on the Blender-like color gradient.
+    
+    :param rgb: A tuple of (r, g, b) with values between 0.0 and 1.0.
+    :return: A float weight between 0.0 (blue) and 1.0 (red).
+    """
+    r, g, b = rgb
+
+    # Colors at key points in the gradient
+    blue = (0.0, 0.0, 1.0)   # Weight 0.0
+    green = (0.0, 1.0, 0.0)  # Weight 0.5
+    red = (1.0, 0.0, 0.0)    # Weight 1.0
+    
+    # Determine which segment of the gradient we are in
+    if b > 0 and g == 0 and r == 0:
+        # Blue to Green segment
+        weight = b / (blue[2] - green[2]) * 0.5
+    elif g > 0 and b == 0:
+        # Green to Red segment
+        weight = 0.5 + g / (green[1] - red[1]) * 0.5
+    else:
+        # If no match, we return None or handle the case as an exception
+        raise ValueError("Input RGB value is not valid or is out of expected gradient range.")
+    
+    # Clamp the weight between 0.0 and 1.0
+    return max(0.0, min(weight, 1.0))
+
+
 # Function to project each pixel of the image texture onto the target object
 def project_texture_pixels_to_object(image_plane, target_object):
     # Get the image plane's location, scale, and rotation
@@ -119,7 +149,6 @@ def project_texture_pixels_to_object(image_plane, target_object):
 
             # Convert the UV coordinate to 3D space using the transformation matrix
             pixel_position_3d = transformation_matrix @ Vector((uv.x - 0.5, uv.y - 0.5, 0))  # Center the UV to match the image plane
-
             # Get the corresponding UV coordinates on the target object by raycasting from the pixel's 3D position
             uv_coord = get_uv_from_3d_point(obj, pixel_position_3d, ray_direction)
             if uv_coord is None:
@@ -128,8 +157,7 @@ def project_texture_pixels_to_object(image_plane, target_object):
             # Sample the texture at the pixel's UV coordinates
             red, green, blue, alpha = sample_texture_at_uv(image_plane, uv)
 
-            # Use the red channel (or others) as the weight value
-            weight_value = red
+            weight_value = rgb_to_weight((red, green, blue))
 
             # Find the closest vertex on the target object using the KDTree
             co, index, dist = kd_tree.find(pixel_position_3d)
