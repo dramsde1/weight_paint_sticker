@@ -1,32 +1,36 @@
 import bpy
 from pathlib import Path
 import bmesh
-import site
-import pip
-pip.main(['install', 'tqdm', '--target', site.USER_SITE])
-from tqdm import tqdm
+import time
+import sys
 
-#1) get the weights for each vertex in a vertex groups for a single bone 
+def progress_bar(iteration, total, length=50):
+    percent = 100 * (iteration / float(total))
+    filled_length = int(length * iteration // total)
+    bar = '█' * filled_length + '-' * (length - filled_length) 
+    # '\r' returns the cursor to the start of the line so we overwrite previous output
+    sys.stdout.write(f'\r|{bar}| {percent:.2f}% Complete')
+    sys.stdout.flush()  # Ensure the output is printed immediately
+    if iteration == total:
+        print()  # Move to the next line after completion
+
+    
+
 def is_in_vertex_group(vert_index, vert_group):
       return vert_group.weight(vert_index) > 0
-
 
 def arrange_all_groups(source_mesh_name, bm):
     vertex_groups = get_vertex_groups(source_mesh_name)
     vertex_group_dict = {}
     source_obj = bpy.data.objects[source_mesh_name]
-    #flip normals
-#    source_obj = bpy.context.active_object
+
     bpy.context.view_layer.objects.active = source_obj
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
     bpy.ops.mesh.normals_make_consistent(inside=True)
     bpy.ops.object.mode_set(mode='OBJECT')
 
-    #copy vertices
     bm.from_mesh(source_obj.data)
-    # Loop through all vertices to get all non zero weights and their vertex coordinates
-    #for v in mesh_data.vertices:
     for v in bm.verts:
         for vertex_group in vertex_groups:
             vertex_group_name = vertex_group.name
@@ -312,14 +316,14 @@ def get_vertex_groups(mesh_name):
     vertex_groups = bpy.data.objects[mesh_name].vertex_groups
     return vertex_groups
 
-
-
 source_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head00"
 #source_vertex_group_name = "C_nose_Top"
 bm = bmesh.new() #bmesh where you will put copy of source vertex
 vertex_group_dictionary = arrange_all_groups(source_mesh_name, bm)
-for source_vertex_group_name in tqdm(vertex_group_dictionary):
+total_groups = len(vertex_group_dictionary)
+for idx, source_vertex_group_name in enumerate(vertex_group_dictionary):
     output_path = str(Path("E:/MODS/scripts") / "weight_paint_stamp" / "stickers" / f"{source_vertex_group_name}.exr")
     create_weight_stamp(vertex_group_dictionary, source_mesh_name, source_vertex_group_name, output_path)
+    progress_bar(idx, total_groups)
 
 
