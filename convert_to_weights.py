@@ -64,41 +64,38 @@ def sample_texture_at_uv(obj, uv):
 
 
 def project_texture_to_weights(obj, group_name):
-    """
-    Project the image texture from the object's material onto itself, converting RGB values to bone weights.
-    
-    :param obj: The target object with an image texture and armature.
-    """
-    mesh = obj.data
-    bm = bmesh.new()
-    bm.from_mesh(mesh)
-
-    # Ensure the object has a UV map
-    uv_layer = bm.loops.layers.uv.active
-    if uv_layer is None:
-        raise Exception("No UV map found on the object!")
-
-    # Create or find a vertex group for storing weights
+    # Specify the object with the texture
+    obj = bpy.context.active_object
     vertex_group = obj.vertex_groups.get(group_name)
+    # Ensure the object has a mesh
+    if obj and obj.type == 'MESH':
+        # Get the mesh data
+        mesh = obj.data
+        uv_layer = mesh.uv_layers.active.data
+        # Create a BMesh to work with the mesh
+        bm = bmesh.new()
+        bm.from_mesh(mesh)
+        # Iterate through the faces to find corresponding UVs and create vertices
+        for face in bm.faces:
+            for loop in face.loops:
+                uv = uv_layer[loop.index].uv
+                vertex = loop.vert  # Get the vertex coordinates
+                red, green, blue, alpha = sample_texture_at_uv(obj, uv)
+                # Convert the RGB color to a weight value
+                weight_value = rgb_to_weight((red, green, blue))
+                # Assign the weight to the vertex
+                vertex_group.add([vertex.index], weight_value, 'REPLACE')
 
-    # Iterate through the vertices and map UV to weights
-    for face in bm.faces:
-        for loop in face.loops:
-            vert = loop.vert
-            uv = loop[uv_layer].uv  # Get the UV coordinates for this vertex
+        # Write back to the mesh
+        bm.to_mesh(mesh)
+        bm.free()
+    else:
+        print("Selected object is not a mesh.")
 
-            # Sample the texture color at the UV coordinates
-            red, green, blue, alpha = sample_texture_at_uv(obj, uv)
 
-            # Convert the RGB color to a weight value
-            weight_value = rgb_to_weight((red, green, blue))
 
-            # Assign the weight to the vertex
-            vertex_group.add([vert.index], weight_value, 'REPLACE')
 
-    # Update the mesh with the new vertex weights
-    bm.to_mesh(mesh)
-    bm.free()
+
 
 # Example usage:
 obj = bpy.context.active_object  # The object with the texture to project
