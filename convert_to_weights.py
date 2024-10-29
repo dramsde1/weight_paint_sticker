@@ -62,38 +62,39 @@ def sample_texture_at_uv(obj, uv):
 
     return red, green, blue, alpha
 
-
 def project_texture_to_weights(obj, group_name):
     # Specify the object with the texture
     obj = bpy.context.active_object
     vertex_group = obj.vertex_groups.get(group_name)
+    
     # Ensure the object has a mesh
     if obj and obj.type == 'MESH':
         # Get the mesh data
         mesh = obj.data
-        uv_layer = mesh.uv_layers.active.data
-        # Create a BMesh to work with the mesh
-        bm = bmesh.new()
-        bm.from_mesh(mesh)
-        # Iterate through the faces to find corresponding UVs and create vertices
-        for face in bm.faces:
-            for loop in face.loops:
-                uv = uv_layer[loop.index].uv
-                vertex = loop.vert  # Get the vertex coordinates
-                red, green, blue, alpha = sample_texture_at_uv(obj, uv)
-                # Convert the RGB color to a weight value
-                weight_value = rgb_to_weight((red, green, blue))
-                # Assign the weight to the vertex
-                vertex_group.add([vertex.index], weight_value, 'REPLACE')
+        uv_layer = mesh.uv_layers.active  # Get the active UV layer (not accessing data directly here)
+        
+        vertex_dict = {}
 
-        # Write back to the mesh
-        bm.to_mesh(mesh)
-        bm.free()
+        # Loops per face
+        for face in mesh.polygons:
+            for vert_idx, loop_idx in zip(face.vertices, face.loop_indices):
+                vertex = mesh.vertices[vert_idx]
+                if vertex.select:
+                    uv = uv_layer.data[loop_idx].uv
+                    # Sample color from the texture at the UV coordinate
+                    red, green, blue, alpha = sample_texture_at_uv(obj, uv)
+                    # Convert the RGB color to a weight value
+                    weight_value = rgb_to_weight((red, green, blue))
+                    vertex_dict[vertex.index] = weight_value
+
+        bpy.ops.object.mode_set(mode='OBJECT')
+        breakpoint()
+        for idx in vertex_dict:
+            weight_value = vertex_dict[idx]
+            vertex_group.add([idx], weight_value, 'REPLACE')
+        
     else:
         print("Selected object is not a mesh.")
-
-
-
 
 
 
