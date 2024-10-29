@@ -3,39 +3,49 @@ import bmesh
 from mathutils import Vector, kdtree
 import math
 
+
 def rgb_to_weight(rgb):
     """
-    Converts an RGB value to a weight (0.0 - 1.0) using Blender's weight paint color gradient.
-    
-    :param rgb: An (r, g, b) tuple with values between 0.0 and 1.0.
-    :return: A float value between 0.0 (blue) and 1.0 (red) representing the weight.
-    """
-    r, g, b = rgb
-    
-    # Check if color is close to blue (0.0 weight)
-    if math.isclose(r, 0.0, abs_tol=0.1) and math.isclose(g, 0.0, abs_tol=0.1) and math.isclose(b, 1.0, abs_tol=0.1):
-        return 0.0  # Blue, corresponding to weight 0.0
-    
-    # Check if color is close to green (0.5 weight)
-    elif math.isclose(r, 0.0, abs_tol=0.1) and math.isclose(g, 1.0, abs_tol=0.1) and math.isclose(b, 0.0, abs_tol=0.1):
-        return 0.5  # Green, corresponding to weight 0.5
-    
-    # Check if color is close to red (1.0 weight)
-    elif math.isclose(r, 1.0, abs_tol=0.1) and math.isclose(g, 0.0, abs_tol=0.1) and math.isclose(b, 0.0, abs_tol=0.1):
-        return 1.0  # Red, corresponding to weight 1.0
-    
-    # Otherwise, interpolate between colors
-    if b > 0 and g == 0 and r == 0:
-        # Interpolate between blue (0.0) and green (0.5)
-        weight = b * 0.5
-    elif r > 0 and g > 0 and b == 0:
-        # Interpolate between green (0.5) and red (1.0)
-        weight = 0.5 + (r * 0.5)
-    else:
-        # Default to 0 if color does not match known points
-        weight = 0.0
+    Converts an RGB color to a weight value (0.0 - 1.0) by approximating Blender's weight paint color gradient.
 
-    return weight
+    :param rgb: An (r, g, b) tuple with values between 0.0 and 1.0.
+    :return: A float value representing the weight (0.0 for blue to 1.0 for red).
+    """
+    # Create a temporary material to access the color ramp node
+    temp_material = bpy.data.materials.new(name="TempMaterial")
+    temp_material.use_nodes = True
+    nodes = temp_material.node_tree.nodes
+    color_ramp_node = nodes.new(type="ShaderNodeValToRGB")
+    
+    # Set up a color ramp with Blender-like weight colors
+    color_ramp_node.color_ramp.interpolation = 'LINEAR'
+    color_ramp_node.color_ramp.elements[0].color = (0.0, 0.0, 1.0, 1.0)  # Blue at weight 0.0
+    color_ramp_node.color_ramp.elements[1].color = (1.0, 0.0, 0.0, 1.0)  # Red at weight 1.0
+    color_ramp_node.color_ramp.elements.new(0.5).color = (0.0, 1.0, 0.0, 1.0)  # Green at weight 0.5
+    
+    # Initialize variables for best match
+    best_weight = 0.0
+    best_distance = float('inf')
+
+    # Sample weights in increments to find the closest RGB match
+    steps = 100
+    for i in range(steps + 1):
+        weight = i / steps
+        sampled_rgb = color_ramp_node.color_ramp.evaluate(weight)[:3]
+        
+        # Calculate distance between sampled RGB and input RGB
+        distance = math.sqrt(sum((sampled_rgb[j] - rgb[j]) ** 2 for j in range(3)))
+        
+        # Check if this weight is a closer match
+        if distance < best_distance:
+            best_distance = distance
+            best_weight = weight
+
+    # Clean up: remove the temporary material
+    bpy.data.materials.remove(temp_material, do_unlink=True)
+    
+    return best_weight
+
 
 
 def sample_texture_at_uv(obj, uv, image):
