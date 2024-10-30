@@ -18,7 +18,7 @@ def create_rgb_to_weight_map():
 
     rgb_to_weight_map = {}
     
-    increments = 1000
+    increments = 500
     for i in range(increments + 1):
         weight = i / increments
         sampled_rgb = color_ramp_node.color_ramp.evaluate(weight)[:3]

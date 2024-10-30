@@ -14,8 +14,6 @@ def progress_bar(iteration, total, length=50):
     if iteration == total:
         print()  # Move to the next line after completion
 
-    
-
 def is_in_vertex_group(vert_index, vert_group):
       return vert_group.weight(vert_index) > 0
 
