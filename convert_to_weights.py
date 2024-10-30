@@ -3,48 +3,47 @@ import bmesh
 from mathutils import Vector, kdtree
 import math
 
-
-def rgb_to_weight(rgb):
-    """
-    Converts an RGB color to a weight value (0.0 - 1.0) by approximating Blender's weight paint color gradient.
-
-    :param rgb: An (r, g, b) tuple with values between 0.0 and 1.0.
-    :return: A float value representing the weight (0.0 for blue to 1.0 for red).
-    """
+def create_rgb_to_weight_map():
     # Create a temporary material to access the color ramp node
     temp_material = bpy.data.materials.new(name="TempMaterial")
     temp_material.use_nodes = True
     nodes = temp_material.node_tree.nodes
     color_ramp_node = nodes.new(type="ShaderNodeValToRGB")
-    
+
     # Set up a color ramp with Blender-like weight colors
     color_ramp_node.color_ramp.interpolation = 'LINEAR'
     color_ramp_node.color_ramp.elements[0].color = (0.0, 0.0, 1.0, 1.0)  # Blue at weight 0.0
     color_ramp_node.color_ramp.elements[1].color = (1.0, 0.0, 0.0, 1.0)  # Red at weight 1.0
     color_ramp_node.color_ramp.elements.new(0.5).color = (0.0, 1.0, 0.0, 1.0)  # Green at weight 0.5
-    
-    # Initialize variables for best match
-    best_weight = 0.0
-    best_distance = float('inf')
 
-    # Sample weights in increments to find the closest RGB match
-    steps = 100
-    for i in range(steps + 1):
-        weight = i / steps
+    rgb_to_weight_map = {}
+    
+    increments = 1000
+    for i in range(increments + 1):
+        weight = i / increments
         sampled_rgb = color_ramp_node.color_ramp.evaluate(weight)[:3]
-        
-        # Calculate distance between sampled RGB and input RGB
-        distance = math.sqrt(sum((sampled_rgb[j] - rgb[j]) ** 2 for j in range(3)))
-        
-        # Check if this weight is a closer match
-        if distance < best_distance:
-            best_distance = distance
-            best_weight = weight
+        rgb_to_weight_map[sampled_rgb] = weight
 
     # Clean up: remove the temporary material
     bpy.data.materials.remove(temp_material, do_unlink=True)
-    
-    return best_weight
+
+    #kind of hacky but if the rgb value is black, give it the same value as if it were blue
+    #adding black (for the background) to a number system that really spans between blue, red, green
+    rgb_to_weight_map[(0.0, 0.0, 0.0)] = 0.0
+
+    return rgb_to_weight_map
+
+def rgb_to_weight(rgb, rgb_to_weight_map):
+    """
+    Converts an RGB color to a weight value (0.0 - 1.0) by approximating Blender's weight paint color gradient.
+    :param rgb: An (r, g, b) tuple with values between 0.0 and 1.0.
+    :return: A float value representing the weight (0.0 for blue to 1.0 for red).
+    """
+    rgb_values = list(rgb_to_weight_map.keys()) 
+    closest_rgb = min(rgb_values, key=lambda x: math.sqrt(sum((x[j] - rgb[j]) ** 2 for j in range(3))))
+    closest_weight = rgb_to_weight_map[closest_rgb]
+
+    return closest_weight
 
 
 
@@ -65,6 +64,8 @@ def project_texture_to_weights(obj, group_name, image_name):
     vertex_group = obj.vertex_groups.get(group_name)
 
     image = get_image_from_image_editor()
+
+    rgb_to_weight_map = create_rgb_to_weight_map()
 
     # Ensure the object is a mesh
     if obj and obj.type == 'MESH':
@@ -93,7 +94,7 @@ def project_texture_to_weights(obj, group_name, image_name):
                     # Sample color from the texture at the UV coordinate
                     red, green, blue, alpha = sample_texture_at_uv(obj, uv, image)
                     # Convert the RGB color to a weight value
-                    weight_value = rgb_to_weight((red, green, blue))
+                    weight_value = rgb_to_weight((red, green, blue), rgb_to_weight_map)
 
                     # Store the weight value in the dictionary
                     vertex_dict[vertex.index] = weight_value
