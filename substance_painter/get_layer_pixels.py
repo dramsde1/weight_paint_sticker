@@ -7,13 +7,13 @@ import substance_painter.export
 import substance_painter.project 
 import substance_painter.textureset
 from pathlib import Path
-
+from PIL import Image
 from PySide2 import QtWidgets
 
 plugin_widgets = []
 
 
-def get_all_layers(base_output_path: Path):
+def export_layer_data(base_output_path: Path):
     """Gets all layers in the current Substance Painter document."""
 
     if not substance_painter.project.is_open() :
@@ -41,8 +41,6 @@ def get_all_layers(base_output_path: Path):
         # Read the exported image
         image = Image.open(export_path)
 
-        from PIL import Image
-
         # Open the image
         image = Image.open(export_path)
 
@@ -66,18 +64,13 @@ def get_all_layers(base_output_path: Path):
         pixel_dict[layer.name()] = non_black_or_blue_coords
         #THE LAYER NAMES SHOULD BE THE SAME NAME AS THE VERTEX GROUP
         print(f"Coordinates of non-black/non-blue pixels: {non_black_or_blue_coords}")
-    
+        os.remove(export_path) 
+
     json_path = base_output_path / "layer_pixels.json"
     with open(f"{json_path}", "w") as file:
         json.dump(pixel_dict, file, indent=4)
+
     return layers
-
-
-
-
-
-
-
 
 
 # Get the desired layer (e.g., by name)
@@ -90,5 +83,6 @@ def get_all_layers(base_output_path: Path):
     #print(layer.name())
 
 if __name__ == "__main__":
-    start_plugin()
-
+    home_directory = Path.home() / "substance_data"
+    home_directory.mkdir(parents=True, exist_ok=True)
+    export_layer_data(home_directory)
