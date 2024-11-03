@@ -2,6 +2,7 @@ import bpy
 import bmesh
 from mathutils import Vector, kdtree
 import math
+import json
 
 def create_rgb_to_weight_map():
     # Create a temporary material to access the color ramp node
@@ -45,9 +46,21 @@ def rgb_to_weight(rgb, rgb_to_weight_map):
 
     return closest_weight
 
+def convert_to_xy(pixel_index, image)
+    # Given variables
+    width = image.size[0]
+
+    # Convert pixel index to 2D coordinates
+    index = pixel_index // 4  # remove color channel offset
+    x = index % width         # x-coordinate
+    y = index // width        # y-coordinate
+
+    # Result as a 2-tuple
+    pixel_coordinates = (x, y)
+    return pixel_coordinates
 
 
-def sample_texture_at_uv(obj, uv, image):
+def sample_texture_at_uv(obj, uv, image, json_dict):
     # Convert UV coordinates to image pixel space
     uv_x = int(uv.x * image.size[0])
     uv_y = int(uv.y * image.size[1])
@@ -55,14 +68,26 @@ def sample_texture_at_uv(obj, uv, image):
     # Sample the color from the image pixels
     pixel_index = (uv_y * image.size[0] + uv_x) * 4
     r, g, b, a = image.pixels[pixel_index:pixel_index + 4]
-    return (r, g, b, a)
+    pixel_coordinates = convert_to_xy(pixel_index, image)
+    vertex_group_name = json_dict[pixel_coordinates]
+    return (r, g, b, a, vertex_group_name)
 
 
+def get_dict_from_json(file_path):
+    with open(file_path, 'r') as file:
+        data = json.load(file)
+    return data
 
-def project_texture_to_weights(obj, group_name, image_name):
+def get_reverse_lookup(data):
+    reverse_lookup = {}
+    for key, values in data.items():
+        for value in values:
+            reverse_lookup[value] = key
+    return reverse_lookup
+
+
+def project_texture_to_weights(obj, json_dict):
     # Get the vertex group to apply weights
-    vertex_group = obj.vertex_groups.get(group_name)
-
     image = get_image_from_image_editor()
 
     rgb_to_weight_map = create_rgb_to_weight_map()
@@ -92,18 +117,23 @@ def project_texture_to_weights(obj, group_name, image_name):
                 if vertex.select:
                     uv = loop[uv_layer].uv  # Access the UV from the loop
                     # Sample color from the texture at the UV coordinate
-                    red, green, blue, alpha = sample_texture_at_uv(obj, uv, image)
+                    red, green, blue, alpha, vertex_group_name = sample_texture_at_uv(obj, uv, image, json_dict)
                     # Convert the RGB color to a weight value
+
                     weight_value = rgb_to_weight((red, green, blue), rgb_to_weight_map)
 
+
                     # Store the weight value in the dictionary
-                    vertex_dict[vertex.index] = weight_value
+                    vertex_dict[vertex.index] = {"weight_value": weight_value, "vertex_group_name": vertex_group_name}
 
         # Set to Object Mode to apply vertex weights
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # Apply the vertex weights to the vertex group
-        for idx, weight_value in vertex_dict.items():
+        for idx, data in vertex_dict.items():
+            vertex_group_name = data["vertex_group_name"]
+            weight_value = data["weight_value"]
+            vertex_group = obj.vertex_groups.get(vertex_group_name)
             vertex_group.add([idx], weight_value, 'REPLACE')
 
         # Free the BMesh after we're done
@@ -153,6 +183,7 @@ def get_image_from_image_editor():
 # Example usage:
 object_name = "LOD_1_Group_0_Sub_3__esf_Head.001"
 obj = bpy.data.objects.get(object_name)
-vertex_group_name = "C_nose_Top"
 image_name = "example.png"
-project_texture_to_weights(obj, vertex_group_name, image_name)
+file_path = "?"
+get_dict_from_json(file_path)
+project_texture_to_weights(obj)
