@@ -81,7 +81,7 @@ def arrange_vertex_group(source_mesh_name, bm, vertex_group_name):
 
 # this function is meant to be used in a for loop, looping through all of the bones/vertex groups on an armature/meshG
 # for mods, the bone names should be the same for both armatures
-def create_weight_stamp(vertex_group_dictionaries, source_mesh_name, source_vertex_group_name, output_path):
+def create_weight_sticker(vertex_group_dictionaries, source_mesh_name, source_vertex_group_name, output_path):
     source_mesh = bpy.data.objects[source_mesh_name]
     # 1) create list of all non zero vertices for a vertex group
     source_selected_vertices = vertex_group_dictionaries[source_vertex_group_name]
@@ -259,8 +259,10 @@ def bake_weights(vertex_group_name, obj, output_path):
         obj.select_set(True)  # Select the object to be baked
         bpy.context.view_layer.objects.active = obj  # Make it the active object
         texture_image = bpy.data.images.new(
-            name=vertex_group_name, width=render_resolution, height=render_resolution, alpha=False, float_buffer=True
+            name=vertex_group_name, width=render_resolution, height=render_resolution, alpha=True, float_buffer=True
         )
+        pixels = [0.0, 0.0, 0.0, 0.0] * render_resolution * render_resolution
+        texture_image.pixels = pixels
 
         texture_image.filepath_raw = output_path
         scene.render.image_settings.file_format = 'OPEN_EXR'
@@ -320,8 +322,7 @@ bm = bmesh.new() #bmesh where you will put copy of source vertex
 vertex_group_dictionary = arrange_all_groups(source_mesh_name, bm)
 total_groups = len(vertex_group_dictionary)
 for idx, source_vertex_group_name in enumerate(vertex_group_dictionary):
-    output_path = str(Path("E:/MODS/scripts") / "weight_paint_stamp" / "stickers" / f"{source_vertex_group_name}.exr")
-    create_weight_stamp(vertex_group_dictionary, source_mesh_name, source_vertex_group_name, output_path)
+    output_path = str(Path("E:/MODS/scripts") / "EXAMPLE" / f"{source_vertex_group_name}.exr")
+    create_weight_sticker(vertex_group_dictionary, source_mesh_name, source_vertex_group_name, output_path)
     progress_bar(idx, total_groups)
-
-
+    breakpoint()
