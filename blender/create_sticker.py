@@ -3,6 +3,12 @@ from pathlib import Path
 import bmesh
 import time
 import sys
+import mathutils
+from mathutils import kdtree
+import heapq
+from scipy.optimize import minimize
+from mathutils import Vector
+
 
 def progress_bar(iteration, total, length=50):
     percent = 100 * (iteration / float(total))
@@ -13,6 +19,131 @@ def progress_bar(iteration, total, length=50):
     sys.stdout.flush()  # Ensure the output is printed immediately
     if iteration == total:
         print()  # Move to the next line after completion
+
+def build_kdtree_from_mesh(mesh_obj):
+    """Build a k-d tree from the mesh vertices."""
+    kdt = kdtree.KDTree(len(mesh_obj.data.vertices))
+    for i, vertex in enumerate(mesh_obj.data.vertices):
+        world_pos = mesh_obj.matrix_world @ vertex.co
+        kdt.insert(world_pos, i)  
+    kdt.balance()  
+    return kdt
+
+def get_closest_vertex_on_mesh_with_kdtree(mesh_obj, world_point, kdt):
+    """Find the closest point on the mesh surface using a k-d tree."""
+    _, index = kdt.find(world_point)
+    #closest_vertex = mesh_obj.data.vertices[index]
+    return index
+
+def get_neighbors(vertex):
+    """Return neighboring vertices of a vertex"""
+    neighbors = []
+    for edge in vertex.link_edges:
+        # Add the other vertex in the edge
+        neighbors.append(edge.other_vert(vertex))
+    return neighbors
+
+def compute_surface_distance(mesh_obj, start_point, end_point, radius=1.0, kdt): 
+    """Compute the shortest path on the mesh surface using a k-d tree and Dijkstra's algorithm."""
+    # Find the closest vertices to the start and end points using the k-d tree
+    start_vertex_index = get_closest_vertex_on_mesh_with_kdtree(mesh_obj, start_point, kdt)
+    end_vertex_index = get_closest_vertex_on_mesh_with_kdtree(mesh_obj, end_point, kdt)
+
+    if start_vertex_index is None or end_vertex_index is None:
+        return None  # No valid vertex found
+
+    # Dijkstra's algorithm using the k-d tree for finding neighbors
+    def dijkstra(start, end):
+        # Priority queue to store (distance, vertex) tuples
+        queue = [(0, start)]
+        distances = {start: 0}
+        previous = {start: None}
+
+        while queue:
+            current_dist, current_vertex = heapq.heappop(queue)
+
+            if current_vertex == end:
+                break  # Found the shortest path
+
+            neighbors = get_neighbors(current_vertex)
+
+            for neighbor in neighbors:
+                edge_distance = (mesh_obj.data.vertices[neighbor].co - mesh_obj.data.vertices[current_vertex].co).length
+                new_dist = current_dist + edge_distance
+
+                if neighbor not in distances or new_dist < distances[neighbor]:
+                    distances[neighbor] = new_dist
+                    previous[neighbor] = current_vertex
+                    heapq.heappush(queue, (new_dist, neighbor))
+
+        # Reconstruct the shortest path
+        path = []
+        vertex = end
+        while vertex is not None:
+            path.append(vertex)
+            vertex = previous[vertex]
+        path.reverse()
+        return path
+
+    # Get the shortest path between the start and end vertices
+    path = dijkstra(start_vertex_index, end_vertex_index)
+
+    if path is None:
+        return None  # No path found
+
+    # Compute the total distance along the path
+    total_distance = 0
+    for i in range(len(path) - 1):
+        v1 = mesh_obj.data.vertices[path[i]]
+        v2 = mesh_obj.data.vertices[path[i + 1]]
+        total_distance += (v2.co - v1.co).length
+
+    return total_distance
+
+
+
+
+
+# Example: Markers with world-space positions and their associated distances
+markers = [
+    {"position": Vector((1, 2, 3)), "distance": 5.0},
+    {"position": Vector((4, 5, 6)), "distance": 7.0},
+    {"position": Vector((7, 8, 9)), "distance": 4.0}
+]
+
+# Define the error function (sum of squared distance errors)
+def error_function(point, markers):
+    point_vector = Vector(point)
+    total_error = 0
+    for marker in markers:
+        marker_position = marker["position"]
+        marker_distance = marker["distance"]
+        # Compute the Euclidean distance between the point and the marker
+        distance_to_marker = (point_vector - marker_position).length
+        total_error += (distance_to_marker - marker_distance) ** 2
+    return total_error
+
+# Initialize the guess for the point (this could be the average of the marker positions)
+initial_guess = [0.0, 0.0, 0.0]
+for marker in markers:
+    initial_guess[0] += marker["position"].x
+    initial_guess[1] += marker["position"].y
+    initial_guess[2] += marker["position"].z
+
+initial_guess = [coord / len(markers) for coord in initial_guess]
+
+# Use scipy's minimize function to find the point that minimizes the error
+result = minimize(error_function, initial_guess, args=(markers,), method='Nelder-Mead')
+
+# If the optimization was successful, print the result
+if result.success:
+    optimized_point = Vector(result.x)
+    print(f"Optimized point: {optimized_point}")
+else:
+    print("Optimization failed")
+
+
+
 
 def is_in_vertex_group(vert_index, vert_group):
       return vert_group.weight(vert_index) > 0
