@@ -101,16 +101,6 @@ def compute_surface_distance(mesh_obj, start_point, end_point, radius=1.0, kdt):
     return total_distance
 
 
-
-
-
-# Example: Markers with world-space positions and their associated distances
-markers = [
-    {"position": Vector((1, 2, 3)), "distance": 5.0},
-    {"position": Vector((4, 5, 6)), "distance": 7.0},
-    {"position": Vector((7, 8, 9)), "distance": 4.0}
-]
-
 # Define the error function (sum of squared distance errors)
 def error_function(point, markers):
     point_vector = Vector(point)
@@ -123,26 +113,36 @@ def error_function(point, markers):
         total_error += (distance_to_marker - marker_distance) ** 2
     return total_error
 
-# Initialize the guess for the point (this could be the average of the marker positions)
-initial_guess = [0.0, 0.0, 0.0]
-for marker in markers:
-    initial_guess[0] += marker["position"].x
-    initial_guess[1] += marker["position"].y
-    initial_guess[2] += marker["position"].z
 
-initial_guess = [coord / len(markers) for coord in initial_guess]
+def find_target_weight_center(markers: list):
+    # Example: Markers with world-space positions and their associated distances
+    # markers = [
+    #     {"position": Vector((1, 2, 3)), "distance": 5.0},
+    #     {"position": Vector((4, 5, 6)), "distance": 7.0},
+    #     {"position": Vector((7, 8, 9)), "distance": 4.0}
+    # ]
 
-# Use scipy's minimize function to find the point that minimizes the error
-result = minimize(error_function, initial_guess, args=(markers,), method='Nelder-Mead')
+    # Initialize the guess for the point (this could be the average of the marker positions)
+    initial_guess = [0.0, 0.0, 0.0]
+    for marker in markers:
+        initial_guess[0] += marker["position"].x
+        initial_guess[1] += marker["position"].y
+        initial_guess[2] += marker["position"].z
 
-# If the optimization was successful, print the result
-if result.success:
-    optimized_point = Vector(result.x)
-    print(f"Optimized point: {optimized_point}")
-else:
-    print("Optimization failed")
+    initial_guess = [coord / len(markers) for coord in initial_guess]
 
+    # Use scipy's minimize function to find the point that minimizes the error
+    result = minimize(error_function, initial_guess, args=(markers,), method='Nelder-Mead')
 
+    # If the optimization was successful, print the result
+    if result.success:
+        optimized_point = Vector(result.x)
+        print(f"Optimized point: {optimized_point}")
+        return optimized_point
+    else:
+        print("Optimization failed")
+        #When can it fail?
+        return None
 
 
 def is_in_vertex_group(vert_index, vert_group):
