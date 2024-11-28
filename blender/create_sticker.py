@@ -102,48 +102,57 @@ def compute_surface_distance(mesh_obj, start_point, end_point, radius=1.0, kdt):
 
 
 # Define the error function (sum of squared distance errors)
-def error_function(point, markers):
-    point_vector = Vector(point)
+def error_function(point_vector, markers, mesh_obj, kdt):
     total_error = 0
     for marker in markers:
         marker_position = marker["position"]
         marker_distance = marker["distance"]
         # Compute the Euclidean distance between the point and the marker
-        distance_to_marker = (point_vector - marker_position).length
+        #distance_to_marker = (point_vector - marker_position).length
+        distance_to_marker = compute_surface_distance(mesh_obj, point_vector, marker_position, 1, kdt)
+
         total_error += (distance_to_marker - marker_distance) ** 2
     return total_error
 
 
-def find_target_weight_center(markers: list):
+def find_target_weight_center(mesh_obj, kdt, markers: list):
     # Example: Markers with world-space positions and their associated distances
     # markers = [
     #     {"position": Vector((1, 2, 3)), "distance": 5.0},
     #     {"position": Vector((4, 5, 6)), "distance": 7.0},
     #     {"position": Vector((7, 8, 9)), "distance": 4.0}
     # ]
+    vertices = mesh_obj.data.vertices
+    error_list = []
+    for vertex in vertices:
+        error = error_function(vertex.co, markers, mesh_obj, kdt)
+        error_list.append(error)
 
-    # Initialize the guess for the point (this could be the average of the marker positions)
-    initial_guess = [0.0, 0.0, 0.0]
-    for marker in markers:
-        initial_guess[0] += marker["position"].x
-        initial_guess[1] += marker["position"].y
-        initial_guess[2] += marker["position"].z
+    min_error = min(error_list)
+    #get the index of min_error
+    #TODO
+    index = None
+    #get the corresponding vertex 
+    least_error_vertex = vertices[index]
+    return least_error_vertex
 
-    initial_guess = [coord / len(markers) for coord in initial_guess]
+def calculate_marker_distances(point_vector, marker_name_list, mesh_obj, kdt):
+    markers = []
 
-    # Use scipy's minimize function to find the point that minimizes the error
-    result = minimize(error_function, initial_guess, args=(markers,), method='Nelder-Mead')
+    for name in marker_name_list:
+        marker = bpy.data.objects[name]
+        #TODO
+        marker_position = #HERE how to get the origin co of emptys
 
-    # If the optimization was successful, print the result
-    if result.success:
-        optimized_point = Vector(result.x)
-        print(f"Optimized point: {optimized_point}")
-        return optimized_point
-    else:
-        print("Optimization failed")
-        #When can it fail?
-        return None
+        distance_to_marker = compute_surface_distance(mesh_obj, point_vector, marker_position, 1, kdt)
+        #distance_to_marker = (point_vector - marker_position).length
+        markers.append({"position": marker_position, "distance": distance_to_marker})
 
+        """
+        need to make sure that you dont just go by distance, but by distance following the surface
+        """
+
+    return markers
 
 def is_in_vertex_group(vert_index, vert_group):
       return vert_group.weight(vert_index) > 0
@@ -438,6 +447,29 @@ def bake_weights(vertex_group_name, obj, output_path):
         scene.cycles.use_denoising = default_denoise
         scene.cycles.device = default_compute_device
         scene.render.engine = default_render_engine
+
+def get_weight_area_center():
+    #find the pixels that are not blue
+    #calcualate the center of those pixels
+    pass
+
+def place_weights_on_target():
+    """
+    create weight sticker
+
+    find the area of non blue surface on the image texture
+
+    calculate the markers on source mesh, create the markers dictionary
+
+    find the weight center point on the target mesh
+
+    place the image texture on the target mesh matching the weight center point with the found center on the mesh
+    """
+    #create weight sticker
+    output_path = str(Path("E:/MODS/scripts") / "EXAMPLE" / f"{source_vertex_group_name}.exr")
+    create_weight_sticker(vertex_group_dictionary, source_mesh_name, source_vertex_group_name, output_path)
+    
+    #find the area of non blue surface on the image texture
 
 
 def mark_location(vertex):
