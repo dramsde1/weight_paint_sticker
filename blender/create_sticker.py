@@ -129,9 +129,7 @@ def find_target_weight_center(mesh_obj, kdt, markers: list):
         error_list.append(error)
 
     min_error = min(error_list)
-    #get the index of min_error
-    #TODO
-    index = None
+    index = error_list.index(min_error)
     #get the corresponding vertex 
     least_error_vertex = vertices[index]
     return least_error_vertex
@@ -141,16 +139,9 @@ def calculate_marker_distances(point_vector, marker_name_list, mesh_obj, kdt):
 
     for name in marker_name_list:
         marker = bpy.data.objects[name]
-        #TODO
-        marker_position = #HERE how to get the origin co of emptys
-
+        marker_position = marker.location
         distance_to_marker = compute_surface_distance(mesh_obj, point_vector, marker_position, 1, kdt)
-        #distance_to_marker = (point_vector - marker_position).length
         markers.append({"position": marker_position, "distance": distance_to_marker})
-
-        """
-        need to make sure that you dont just go by distance, but by distance following the surface
-        """
 
     return markers
 
@@ -453,7 +444,7 @@ def get_weight_area_center():
     #calcualate the center of those pixels
     pass
 
-def place_weights_on_target():
+def place_weights_on_target(source_mesh_name, vertex_group_name):
     """
     create weight sticker
 
@@ -465,10 +456,13 @@ def place_weights_on_target():
 
     place the image texture on the target mesh matching the weight center point with the found center on the mesh
     """
-    #create weight sticker
-    output_path = str(Path("E:/MODS/scripts") / "EXAMPLE" / f"{source_vertex_group_name}.exr")
-    create_weight_sticker(vertex_group_dictionary, source_mesh_name, source_vertex_group_name, output_path)
     
+    source_mesh = bpy.data.objects.get(source_mesh_name)
+    kdt = build_kdtree_from_mesh(source_mesh)
+    
+    
+
+    calculate_marker_distances(point_vector, marker_name_list, mesh_obj, kdt)
     #find the area of non blue surface on the image texture
 
 
