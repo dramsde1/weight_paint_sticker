@@ -439,10 +439,10 @@ def bake_weights(vertex_group_name, obj, output_path):
         scene.cycles.device = default_compute_device
         scene.render.engine = default_render_engine
 
-def get_weight_area_center():
-    #find the pixels that are not blue
-    #calcualate the center of those pixels
-    pass
+def get_weight_area_center(vertex_group_dictionaries, source_vertex_group_name):
+    source_selected_vertices = vertex_group_dictionaries[source_vertex_group_name]
+    center = sum(source_selected_vertices, mathutils.Vector()) / len(source_selected_vertices)
+    #vertex_group_dict[vertex_group_name][v.index] = {"weight": weight, "world": v_world, "vertex": v}
 
 def place_weights_on_target(source_mesh_name, vertex_group_name):
     """
