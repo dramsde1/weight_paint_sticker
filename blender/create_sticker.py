@@ -340,7 +340,125 @@ def weight_to_rgb(weight):
     return rgb
 
 
- # Saving user settings
+def transform_image_texture(obj, image_path, location, rotation, scale, material_name="Weights"):
+
+    # Ensure the object has a material
+    if material_name in obj.data.materials:
+        index = get_material_index(obj, material_name)
+        mat = obj.data.materials[index]
+    else:
+        mat = bpy.data.materials.new(name=material_name)
+        obj.data.materials.append(mat)
+
+    # Enable 'Use Nodes'
+    mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+    links = mat.node_tree.links
+
+    # Clear existing nodes
+    for node in nodes:
+        nodes.remove(node)
+
+    # Add required nodes
+    output_node = nodes.new(type="ShaderNodeOutputMaterial")
+    principled_node = nodes.new(type="ShaderNodeBsdfPrincipled")
+    image_texture_node = nodes.new(type="ShaderNodeTexImage")
+    mapping_node = nodes.new(type="ShaderNodeMapping")
+    texture_coord_node = nodes.new(type="ShaderNodeTexCoord")
+
+    # Position nodes
+    output_node.location = (400, 0)
+    principled_node.location = (200, 0)
+    image_texture_node.location = (0, 200)
+    mapping_node.location = (-200, 200)
+    texture_coord_node.location = (-400, 200)
+
+    # Link nodes
+    links.new(principled_node.outputs['BSDF'], output_node.inputs['Surface'])
+    links.new(image_texture_node.outputs['Color'], principled_node.inputs['Base Color'])
+    links.new(mapping_node.outputs['Vector'], image_texture_node.inputs['Vector'])
+    links.new(texture_coord_node.outputs['UV'], mapping_node.inputs['Vector'])
+
+    # Load an image
+    image_texture_node.image = bpy.data.images.load(image_path)
+
+    # Adjust Mapping node
+    #mapping_node.inputs['Location'].default_value = (1.0, 1.0, 0.0)  # Adjust location
+    #mapping_node.inputs['Rotation'].default_value = (0.0, 0.0, 0.5)  # Adjust rotation
+    #mapping_node.inputs['Scale'].default_value = (2.0, 2.0, 1.0)  # Adjust scale
+    mapping_node.inputs['Location'].default_value = location
+    mapping_node.inputs['Rotation'].default_value = rotation  
+    mapping_node.inputs['Scale'].default_value = scale  
+
+
+def get_material_index(obj, material_name):
+    if obj and obj.data.materials:
+        for i, mat in enumerate(obj.data.materials):
+            if mat and mat.name == material_name:
+                return i
+    return -1  # Return -1 if the material is not found
+
+
+
+def world_to_uv(obj, world_coord):
+    # Ensure the object has UVs
+    if not obj.data.uv_layers.active:
+        raise ValueError(f"Object '{obj.name}' does not have an active UV map.")
+
+    # Get the mesh and UV layer
+    mesh = obj.data
+    uv_layer = mesh.uv_layers.active.data
+
+    # Convert world coordinates to local coordinates
+    local_coord = obj.matrix_world.inverted() @ world_coord
+
+    # Use bmesh to access geometry and find the closest face
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    bm.verts.ensure_lookup_table()
+    bm.faces.ensure_lookup_table()
+
+    # Find the closest face to the local coordinate
+    closest_face = None
+    min_dist = float('inf')
+    for face in bm.faces:
+        dist = face.calc_center_median().distance(local_coord)
+        if dist < min_dist:
+            min_dist = dist
+            closest_face = face
+
+    if not closest_face:
+        bm.free()
+        raise ValueError("Could not find a face near the provided world coordinate.")
+
+    # Calculate barycentric coordinates of the point on the face
+    hit_point = closest_face.calc_center_median()
+    bary_coords = closest_face.calc_point_in_face(local_coord)
+
+    # Map the barycentric coordinates to UV coordinates
+    uv_coords = Vector((0, 0))
+    for loop, bary in zip(closest_face.loops, bary_coords):
+        uv_coords += uv_layer[loop.index].uv * bary
+
+    bm.free()
+    return uv_coords
+
+# Example usage
+#obj = bpy.context.object  # Select your object in the viewport
+#world_coord = Vector((1.0, 2.0, 3.0))  # Replace with your world coordinate
+
+#try:
+#    uv_coord = world_to_uv(obj, world_coord)
+#    print(f"UV Coordinate: {uv_coord}")
+#except ValueError as e:
+#    print(e)
+
+
+
+
+
+
+# Saving user settings
 def bake_weights(vertex_group_name, obj, output_path):
     # Ensure the object has a material
     if len(obj.data.materials) == 0:
@@ -489,3 +607,4 @@ for idx, source_vertex_group_name in enumerate(vertex_group_dictionary):
     create_weight_sticker(vertex_group_dictionary, source_mesh_name, source_vertex_group_name, output_path)
     progress_bar(idx, total_groups)
     breakpoint()
+
