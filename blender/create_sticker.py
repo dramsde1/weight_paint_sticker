@@ -3,8 +3,7 @@ from pathlib import Path
 import bmesh
 import time
 import sys
-import mathutils
-from mathutils import kdtree
+from mathutils import kdtree, Euler
 import heapq
 from scipy.optimize import minimize
 from mathutils import Vector
@@ -340,7 +339,7 @@ def weight_to_rgb(weight):
     return rgb
 
 
-def transform_image_texture(obj, image_path, location, rotation, scale, material_name="Weights"):
+def create_weight_material(obj, image_path, material_name="Weights"):
 
     # Ensure the object has a material
     if material_name in obj.data.materials:
@@ -381,14 +380,34 @@ def transform_image_texture(obj, image_path, location, rotation, scale, material
 
     # Load an image
     image_texture_node.image = bpy.data.images.load(image_path)
+    
+    info = {
+            "nodes": nodes,
+            "links": links,
+            "output_node": output_node,
+            "principled_node": principled_node,
+            "image_texture_node": image_texture_node,
+            "mapping_node": mapping_node,
+            "texture_coord_node": texture_coord_node
+            }
 
+    return info
+
+def convert_texture_rotation(mapping_rotation):
+    local_rotation = Euler(mapping_rotation, 'XYZ').to_matrix().to_4x4()
+    return local_rotation
+
+def transform_image_texture(obj, image_path, location, rotation, scale):
+
+    info = create_weight_material(obj, image_path, material_name="Weights")
+    mapping_node = info["mapping_node"]
+    mapping_node.inputs['Location'].default_value = location
+    mapping_node.inputs['Rotation'].default_value = rotation  
+    mapping_node.inputs['Scale'].default_value = scale  
     # Adjust Mapping node
     #mapping_node.inputs['Location'].default_value = (1.0, 1.0, 0.0)  # Adjust location
     #mapping_node.inputs['Rotation'].default_value = (0.0, 0.0, 0.5)  # Adjust rotation
     #mapping_node.inputs['Scale'].default_value = (2.0, 2.0, 1.0)  # Adjust scale
-    mapping_node.inputs['Location'].default_value = location
-    mapping_node.inputs['Rotation'].default_value = rotation  
-    mapping_node.inputs['Scale'].default_value = scale  
 
 
 def get_material_index(obj, material_name):
@@ -397,65 +416,6 @@ def get_material_index(obj, material_name):
             if mat and mat.name == material_name:
                 return i
     return -1  # Return -1 if the material is not found
-
-
-
-def world_to_uv(obj, world_coord):
-    # Ensure the object has UVs
-    if not obj.data.uv_layers.active:
-        raise ValueError(f"Object '{obj.name}' does not have an active UV map.")
-
-    # Get the mesh and UV layer
-    mesh = obj.data
-    uv_layer = mesh.uv_layers.active.data
-
-    # Convert world coordinates to local coordinates
-    local_coord = obj.matrix_world.inverted() @ world_coord
-
-    # Use bmesh to access geometry and find the closest face
-    bm = bmesh.new()
-    bm.from_mesh(mesh)
-    bm.verts.ensure_lookup_table()
-    bm.faces.ensure_lookup_table()
-
-    # Find the closest face to the local coordinate
-    closest_face = None
-    min_dist = float('inf')
-    for face in bm.faces:
-        dist = face.calc_center_median().distance(local_coord)
-        if dist < min_dist:
-            min_dist = dist
-            closest_face = face
-
-    if not closest_face:
-        bm.free()
-        raise ValueError("Could not find a face near the provided world coordinate.")
-
-    # Calculate barycentric coordinates of the point on the face
-    hit_point = closest_face.calc_center_median()
-    bary_coords = closest_face.calc_point_in_face(local_coord)
-
-    # Map the barycentric coordinates to UV coordinates
-    uv_coords = Vector((0, 0))
-    for loop, bary in zip(closest_face.loops, bary_coords):
-        uv_coords += uv_layer[loop.index].uv * bary
-
-    bm.free()
-    return uv_coords
-
-# Example usage
-#obj = bpy.context.object  # Select your object in the viewport
-#world_coord = Vector((1.0, 2.0, 3.0))  # Replace with your world coordinate
-
-#try:
-#    uv_coord = world_to_uv(obj, world_coord)
-#    print(f"UV Coordinate: {uv_coord}")
-#except ValueError as e:
-#    print(e)
-
-
-
-
 
 
 # Saving user settings
@@ -567,18 +527,7 @@ def get_weight_area_center(vertex_group_dictionaries, source_vertex_group_name, 
     return closest_vertex
 
 
-def place_weights_on_target(source_mesh_name, target_mesh_name, vertex_group_name, vertex_group_dictionaries):
-    """
-    create weight sticker
-
-    find the area of non blue surface on the image texture
-
-    calculate the markers on source mesh, create the markers dictionary
-
-    find the weight center point on the target mesh
-
-    place the image texture on the target mesh matching the weight center point with the found center on the mesh
-    """
+def place_weights_on_target(source_mesh_name, target_mesh_name, vertex_group_name, vertex_group_dictionaries, image_path):
     
     source_obj = bpy.data.objects.get(source_mesh_name)
     target_obj = bpy.data.objects.get(target_mesh_name)
@@ -587,7 +536,18 @@ def place_weights_on_target(source_mesh_name, target_mesh_name, vertex_group_nam
     vertex_group_center = get_weight_area_center(vertex_group_dictionaries, vertex_group_name, source_obj, kdt)
     marker_name_list = ["Leye.L", "Leye.R" , "Reye.L", "Reye.R" , "mouth.L", "mouth.R"]
     markers = calculate_marker_distances(vertex_group_center, marker_name_list, source_obj, kdt)
-    target_center = find_target_weight_center(target_obj, kdt, markers)
+    target_center_world_coords = find_target_weight_center(target_obj, kdt, markers)
+    info = create_weight_material(target_obj, image_path, material_name="Weights")
+    position_image_texture_by_world_coords(target_obj, target_center_world_coords, info)
+
+def position_image_texture_by_world_coords(obj, world_coords, info: dict):
+    mapping_node = info["mapping_node"]
+    # Convert world coordinates to local object space
+    local_coords = obj.matrix_world.inverted() @ world_coords
+    # Set the Mapping node's Location input to the local coordinates
+    mapping_node.inputs["Location"].default_value = local_coords
+    print(f"Texture '{texture_name}' positioned at local coordinates {local_coords}.")
+    return True
 
 
 def mark_location(vertex):
@@ -598,13 +558,15 @@ def get_vertex_groups(mesh_name):
     return vertex_groups
 
 source_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head00"
+target_mesh_name = "low_head"
 #source_vertex_group_name = "C_nose_Top"
 bm = bmesh.new() #bmesh where you will put copy of source vertex
 vertex_group_dictionary = arrange_all_groups(source_mesh_name, bm)
 total_groups = len(vertex_group_dictionary)
 for idx, source_vertex_group_name in enumerate(vertex_group_dictionary):
-    output_path = str(Path("E:/MODS/scripts") / "EXAMPLE" / f"{source_vertex_group_name}.exr")
-    create_weight_sticker(vertex_group_dictionary, source_mesh_name, source_vertex_group_name, output_path)
+    image_path = str(Path("E:/MODS/scripts") / "EXAMPLE" / f"{source_vertex_group_name}.exr")
+    #create_weight_sticker(vertex_group_dictionary, source_mesh_name, source_vertex_group_name, image_path)
+    place_weights_on_target(source_mesh_name, target_mesh_name, source_vertex_group_name, vertex_group_dictionary, image_path)
     progress_bar(idx, total_groups)
     breakpoint()
 
