@@ -5,7 +5,6 @@ import time
 import sys
 from mathutils import kdtree, Euler
 import heapq
-from scipy.optimize import minimize
 from mathutils import Vector
 
 
@@ -30,8 +29,7 @@ def build_kdtree_from_mesh(mesh_obj):
 
 def get_closest_vertex_on_mesh_with_kdtree(world_point, kdt):
     """Find the closest point on the mesh surface using a k-d tree."""
-    _, index = kdt.find(world_point)
-    #closest_vertex = mesh_obj.data.vertices[index]
+    position, index, distance = kdt.find(world_point)
     return index
 
 def get_neighbors(vertex):
@@ -42,7 +40,7 @@ def get_neighbors(vertex):
         neighbors.append(edge.other_vert(vertex))
     return neighbors
 
-def compute_surface_distance(mesh_obj, start_point, end_point, radius=1.0, kdt): 
+def compute_surface_distance(mesh_obj, start_point, end_point, kdt, radius=1.0): 
     """Compute the shortest path on the mesh surface using a k-d tree and Dijkstra's algorithm."""
     # Find the closest vertices to the start and end points using the k-d tree
     start_vertex_index = get_closest_vertex_on_mesh_with_kdtree(start_point, kdt)
@@ -59,11 +57,10 @@ def compute_surface_distance(mesh_obj, start_point, end_point, radius=1.0, kdt):
         previous = {start: None}
 
         while queue:
-            current_dist, current_vertex = heapq.heappop(queue)
-
+            current_dist, current_vertex_index = heapq.heappop(queue)
+            current_vertex = mesh_obj.data.vertices[current_vertex_index].co
             if current_vertex == end:
                 break  # Found the shortest path
-
             neighbors = get_neighbors(current_vertex)
 
             for neighbor in neighbors:
@@ -108,7 +105,7 @@ def error_function(point_vector, markers, mesh_obj, kdt):
         marker_distance = marker["distance"]
         # Compute the Euclidean distance between the point and the marker
         #distance_to_marker = (point_vector - marker_position).length
-        distance_to_marker = compute_surface_distance(mesh_obj, point_vector, marker_position, 1, kdt)
+        distance_to_marker = compute_surface_distance(mesh_obj, point_vector, marker_position, kdt, 1)
 
         total_error += (distance_to_marker - marker_distance) ** 2
     return total_error
@@ -139,7 +136,7 @@ def calculate_marker_distances(vertex_group_center, marker_name_list, mesh_obj, 
     for name in marker_name_list:
         marker = bpy.data.objects[name]
         marker_position = marker.location
-        distance_to_marker = compute_surface_distance(mesh_obj, vertex_group_center, marker_position, 1, kdt)
+        distance_to_marker = compute_surface_distance(mesh_obj, vertex_group_center, marker_position, kdt, 1)
         markers.append({"position": marker_position, "distance": distance_to_marker, "name": name})
 
     return markers
@@ -520,7 +517,8 @@ def bake_weights(vertex_group_name, obj, output_path):
 def get_weight_area_center(vertex_group_dictionaries, source_vertex_group_name, source_obj, kdt):
     vertex_information = vertex_group_dictionaries[source_vertex_group_name]
     source_selected_vertices = [vertex_information[v_idx]["world"] for v_idx in vertex_information]
-    center = sum(source_selected_vertices) / len(source_selected_vertices)
+    length = len(source_selected_vertices)
+    center = sum(source_selected_vertices, Vector()) / length # look up this syntas again
     #vertex_group_dict[vertex_group_name][v.index] = {"weight": weight, "world": v_world, "vertex": v}
     vertex_index = get_closest_vertex_on_mesh_with_kdtree(center, kdt)
     closest_vertex = source_obj.data.vertices[vertex_index]
@@ -532,10 +530,10 @@ def place_weights_on_target(source_mesh_name, target_mesh_name, vertex_group_nam
     source_obj = bpy.data.objects.get(source_mesh_name)
     target_obj = bpy.data.objects.get(target_mesh_name)
     source_mesh = source_obj.data
-    kdt = build_kdtree_from_mesh(source_mesh)
+    kdt = build_kdtree_from_mesh(source_obj)
     vertex_group_center = get_weight_area_center(vertex_group_dictionaries, vertex_group_name, source_obj, kdt)
     marker_name_list = ["Leye.L", "Leye.R" , "Reye.L", "Reye.R" , "mouth.L", "mouth.R"]
-    markers = calculate_marker_distances(vertex_group_center, marker_name_list, source_obj, kdt)
+    markers = calculate_marker_distances(vertex_group_center.co, marker_name_list, source_obj, kdt)
     target_center_world_coords = find_target_weight_center(target_obj, kdt, markers)
     info = create_weight_material(target_obj, image_path, material_name="Weights")
     position_image_texture_by_world_coords(target_obj, target_center_world_coords, info)
