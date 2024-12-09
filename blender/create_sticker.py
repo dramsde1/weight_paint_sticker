@@ -18,167 +18,6 @@ def progress_bar(iteration, total, length=50):
     if iteration == total:
         print()  # Move to the next line after completion
 
-def build_kdtree_from_mesh(mesh_obj):
-    """Build a k-d tree from the mesh vertices."""
-    kdt = kdtree.KDTree(len(mesh_obj.data.vertices))
-    for i, vertex in enumerate(mesh_obj.data.vertices):
-        world_pos = mesh_obj.matrix_world @ vertex.co
-        kdt.insert(world_pos, i)  
-    kdt.balance()  
-    return kdt
-
-def get_closest_vertex_on_mesh_with_kdtree(world_point, kdt):
-    """Find the closest point on the mesh surface using a k-d tree."""
-    position, index, distance = kdt.find(world_point)
-    return index
-
-def get_neighbors(vertex):
-    """Return neighboring vertices of a vertex"""
-    neighbors = []
-    for edge in vertex.link_edges:
-        # Add the other vertex in the edge
-        neighbors.append(edge.other_vert(vertex))
-    return neighbors
-
-def create_bmesh(obj):
-    # Get the active object (ensure it's a mesh)
-    if obj and obj.type == 'MESH':
-        mesh = obj.data
-        bm = bmesh.new()
-        bm.from_mesh(mesh)
-       # for vert in bm.verts:
-       #     print(f"Vertex: {vert.co}")
-        bm.to_mesh(mesh)
-        #bm.free()  # Free the bmesh to release memory
-        return bm
-    else:
-        print("Please select a mesh object.")
-        return None
-
-
-    #convert to bmesh
-    if obj and obj.type == 'MESH':
-        mesh = obj.data
-        bm = bmesh.new()
-        bm.from_mesh(mesh)
-       # for vert in bm.verts:
-       #     print(f"Vertex: {vert.co}")
-        bm.to_mesh(mesh)
-        #bm.free()  # Free the bmesh to release memory
-        return bm
-    else:
-        print("Please select a mesh object.")
-        return None
-
-def compute_surface_distance(mesh_obj, start_point, end_point, kdt, radius=1.0): 
-    """Compute the shortest path on the mesh surface using a k-d tree and Dijkstra's algorithm."""
-    # Find the closest vertices to the start and end points using the k-d tree
-    bmesh = create_bmesh(mesh_obj)
-    bmesh.verts.ensure_lookup_table()
-    start_vertex_index = get_closest_vertex_on_mesh_with_kdtree(start_point, kdt)
-    end_vertex_index = get_closest_vertex_on_mesh_with_kdtree(end_point, kdt)
-
-    if start_vertex_index is None or end_vertex_index is None:
-        return None  # No valid vertex found
-
-    # Dijkstra's algorithm using the k-d tree for finding neighbors
-    def dijkstra(start, end):
-        # Priority queue to store (distance, vertex) tuples
-        queue = [(0, start)]
-        distances = {start: 0}
-        previous = {start: None}
-
-        while queue:
-            current_dist, current_vertex_index = heapq.heappop(queue)
-            #current_vertex = mesh_obj.data.vertices[current_vertex_index].co
-            current_vertex = bmesh.verts[current_vertex_index]
-            current_index = current_vertex.index
-            if current_index == end:
-                break  # Found the shortest path
-            neighbors = get_neighbors(current_vertex)
-
-            for neighbor in neighbors:
-                #edge_distance = (mesh_obj.data.vertices[neighbor].co - mesh_obj.data.vertices[current_vertex].co).length
-                neighbor_index = neighbor.index
-                edge_distance = (bmesh.verts[neighbor_index].co - bmesh.verts[current_index].co).length
-                new_dist = current_dist + edge_distance
-
-                if neighbor not in distances or new_dist < distances[neighbor]:
-                    distances[neighbor_index] = new_dist
-                    previous[neighbor_index] = current_vertex
-                    heapq.heappush(queue, (new_dist, neighbor_index))
-
-        # Reconstruct the shortest path
-        path = []
-        #vertex = end
-        vertex = bmesh.verts[end]
-        vertex_index = vertex.index
-        while vertex is not None:
-            path.append(vertex)
-            vertex = previous[vertex_index]
-            vertex_index = vertex.index
-        path.reverse()
-        return path
-
-    # Get the shortest path between the start and end vertices
-    path = dijkstra(start_vertex_index, end_vertex_index)
-
-    if path is None:
-        return None  # No path found
-
-    # Compute the total distance along the path
-    total_distance = 0
-    for i in range(len(path) - 1):
-        v1 = mesh_obj.data.vertices[path[i]]
-        v2 = mesh_obj.data.vertices[path[i + 1]]
-        total_distance += (v2.co - v1.co).length
-
-    return total_distance
-
-
-# Define the error function (sum of squared distance errors)
-def error_function(point_vector, markers, mesh_obj, kdt):
-    total_error = 0
-    for marker in markers:
-        marker_position = marker["position"]
-        marker_distance = marker["distance"]
-        # Compute the Euclidean distance between the point and the marker
-        #distance_to_marker = (point_vector - marker_position).length
-        distance_to_marker = compute_surface_distance(mesh_obj, point_vector, marker_position, kdt, 1)
-
-        total_error += (distance_to_marker - marker_distance) ** 2
-    return total_error
-
-
-def find_target_weight_center(mesh_obj, kdt, markers: list):
-    # Example: Markers with world-space positions and their associated distances
-    # markers = [
-    #     {"position": Vector((1, 2, 3)), "distance": 5.0},
-    #     {"position": Vector((4, 5, 6)), "distance": 7.0},
-    #     {"position": Vector((7, 8, 9)), "distance": 4.0}
-    # ]
-    vertices = mesh_obj.data.vertices
-    error_list = []
-    for vertex in vertices:
-        error = error_function(vertex.co, markers, mesh_obj, kdt)
-        error_list.append(error)
-
-    min_error = min(error_list)
-    index = error_list.index(min_error)
-    #get the corresponding vertex 
-    least_error_vertex = vertices[index]
-    return least_error_vertex
-
-def calculate_marker_distances(vertex_group_center, marker_name_list, mesh_obj, kdt):
-    markers = []
-
-    for name in marker_name_list:
-        marker = bpy.data.objects[name]
-        marker_position = marker.location
-        distance_to_marker = compute_surface_distance(mesh_obj, vertex_group_center, marker_position, kdt, 1)
-        markers.append({"position": marker_position, "distance": distance_to_marker, "name": name})
-
-    return markers
 
 def is_in_vertex_group(vert_index, vert_group):
       return vert_group.weight(vert_index) > 0
@@ -564,29 +403,6 @@ def get_weight_area_center(vertex_group_dictionaries, source_vertex_group_name, 
     return closest_vertex
 
 
-def place_weights_on_target(source_mesh_name, target_mesh_name, vertex_group_name, vertex_group_dictionaries, image_path):
-    
-    source_obj = bpy.data.objects.get(source_mesh_name)
-    target_obj = bpy.data.objects.get(target_mesh_name)
-    source_mesh = source_obj.data
-    kdt = build_kdtree_from_mesh(source_obj)
-    vertex_group_center = get_weight_area_center(vertex_group_dictionaries, vertex_group_name, source_obj, kdt)
-    marker_name_list = ["Leye.L", "Leye.R" , "Reye.L", "Reye.R" , "mouth.L", "mouth.R"]
-    markers = calculate_marker_distances(vertex_group_center.co, marker_name_list, source_obj, kdt)
-    target_center_world_coords = find_target_weight_center(target_obj, kdt, markers)
-    info = create_weight_material(target_obj, image_path, material_name="Weights")
-    position_image_texture_by_world_coords(target_obj, target_center_world_coords, info)
-
-def position_image_texture_by_world_coords(obj, world_coords, info: dict):
-    mapping_node = info["mapping_node"]
-    # Convert world coordinates to local object space
-    local_coords = obj.matrix_world.inverted() @ world_coords
-    # Set the Mapping node's Location input to the local coordinates
-    mapping_node.inputs["Location"].default_value = local_coords
-    print(f"Texture '{texture_name}' positioned at local coordinates {local_coords}.")
-    return True
-
-
 def mark_location(vertex):
     bpy.ops.object.empty_add(type='PLAIN_AXES', location=vertex)
 
@@ -595,15 +411,12 @@ def get_vertex_groups(mesh_name):
     return vertex_groups
 
 source_mesh_name = "LOD_1_Group_0_Sub_3__esf_Head00"
-target_mesh_name = "low_head"
-#source_vertex_group_name = "C_nose_Top"
+
 bm = bmesh.new() #bmesh where you will put copy of source vertex
 vertex_group_dictionary = arrange_all_groups(source_mesh_name, bm)
 total_groups = len(vertex_group_dictionary)
 for idx, source_vertex_group_name in enumerate(vertex_group_dictionary):
     image_path = str(Path("E:/MODS/scripts") / "EXAMPLE" / f"{source_vertex_group_name}.exr")
-    #create_weight_sticker(vertex_group_dictionary, source_mesh_name, source_vertex_group_name, image_path)
-    place_weights_on_target(source_mesh_name, target_mesh_name, source_vertex_group_name, vertex_group_dictionary, image_path)
+    create_weight_sticker(vertex_group_dictionary, source_mesh_name, source_vertex_group_name, image_path)
     progress_bar(idx, total_groups)
-    breakpoint()
 
