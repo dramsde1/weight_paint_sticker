@@ -3,6 +3,7 @@ import bmesh
 from mathutils import Vector, kdtree
 import math
 import json
+from pathlib import Path
 
 def create_rgb_to_weight_map():
     # Create a temporary material to access the color ramp node
@@ -60,17 +61,14 @@ def convert_to_xy(pixel_index, image)
     return pixel_coordinates
 
 
-def sample_texture_at_uv(obj, uv, image, json_dict):
+def sample_texture_at_uv(obj, uv, image):
     # Convert UV coordinates to image pixel space
     uv_x = int(uv.x * image.size[0])
     uv_y = int(uv.y * image.size[1])
-
     # Sample the color from the image pixels
     pixel_index = (uv_y * image.size[0] + uv_x) * 4
     r, g, b, a = image.pixels[pixel_index:pixel_index + 4]
-    pixel_coordinates = convert_to_xy(pixel_index, image)
-    vertex_group_name = json_dict[pixel_coordinates]
-    return (r, g, b, a, vertex_group_name)
+    return (r, g, b, a)
 
 
 def get_dict_from_json(file_path):
@@ -86,9 +84,8 @@ def get_reverse_lookup(data):
     return reverse_lookup
 
 
-def project_texture_to_weights(obj, json_dict):
+def project_texture_to_weights(obj, image, vertex_group_name):
     # Get the vertex group to apply weights
-    image = get_image_from_image_editor()
 
     rgb_to_weight_map = create_rgb_to_weight_map()
 
@@ -117,11 +114,10 @@ def project_texture_to_weights(obj, json_dict):
                 if vertex.select:
                     uv = loop[uv_layer].uv  # Access the UV from the loop
                     # Sample color from the texture at the UV coordinate
-                    red, green, blue, alpha, vertex_group_name = sample_texture_at_uv(obj, uv, image, json_dict)
+                    red, green, blue, alpha = sample_texture_at_uv(obj, uv, image)
                     # Convert the RGB color to a weight value
 
                     weight_value = rgb_to_weight((red, green, blue), rgb_to_weight_map)
-
 
                     # Store the weight value in the dictionary
                     vertex_dict[vertex.index] = {"weight_value": weight_value, "vertex_group_name": vertex_group_name}
@@ -144,46 +140,39 @@ def project_texture_to_weights(obj, json_dict):
 
 
 
-def get_image_from_image_editor():
-    # Check if a UV Editor is already open
-    uv_editor_found = any(area.type == 'IMAGE_EDITOR' for area in bpy.context.screen.areas)
-
-    # If UV Editor is found, access the active image in the UV Editor
-    if uv_editor_found:
-        for area in bpy.context.screen.areas:
-            if area.type == 'IMAGE_EDITOR':
-                image = area.spaces.active.image
-                if image:
-                    print(f"Active image in UV Editor: {image.name}")
-                    return image
-                else:
-                    print("No active image in the UV Editor.")
-    else:
-        # Split an existing area vertically to create a new UV Editor
-        for area in bpy.context.screen.areas:
-            if area.type == 'VIEW_3D':  # Choose an area type to split (e.g., 'VIEW_3D')
-                override = bpy.context.copy()
-                override["area"] = area
-                
-                # Split the area vertically
-                bpy.ops.screen.area_split(override, direction='VERTICAL', factor=0.5)
-                
-                # The new area will be the last area in bpy.context.screen.areas
-                new_area = bpy.context.screen.areas[-1]
-                new_area.type = 'IMAGE_EDITOR'
-
-                image = new_area.spaces.active.image
-                if image:
-                    print(f"Active image in UV Editor: {image.name}")
-                    return image
-                else:
-                    print("No active image in the UV Editor.")
-
-
 # Example usage:
-object_name = "LOD_1_Group_0_Sub_3__esf_Head.001"
+object_name = "low_head"
 obj = bpy.data.objects.get(object_name)
 image_name = "example.png"
-file_path = "?"
-get_dict_from_json(file_path)
-project_texture_to_weights(obj)
+
+folder_path = "E:\MODS\scripts\slickback_weight_textures"
+directory = Path(folder_path)
+
+for file_path in directory.glob("*.exr"):  
+
+    vertex_group_name = Path(file_path).stem
+
+    # Load the image into Blender
+    img = bpy.data.images.load(file_path)
+
+    # Ensure at least two areas exist in the current screen
+    screen = bpy.context.screen
+
+    if len(screen.areas) < 2:
+        # Split the largest area if fewer than two areas exist
+        largest_area = max(screen.areas, key=lambda area: area.width * area.height)
+        bpy.ops.screen.area_split(direction='VERTICAL', factor=0.5)
+        print("Split the largest area to ensure at least two areas exist.")
+
+    # Find the second area to set as "IMAGE_EDITOR"
+    image_editor_set = False
+    for index, area in enumerate(screen.areas):
+        if index == 1:  # Target the second area
+            original_type = area.type
+            area.type = 'IMAGE_EDITOR'
+            area.spaces.active.image = img
+            print(f"Set the second area (was {original_type}) to IMAGE_EDITOR and loaded image {img.name}.")
+            image_editor_set = True
+            break
+
+    project_texture_to_weights(obj, img, vertex_group_name)
