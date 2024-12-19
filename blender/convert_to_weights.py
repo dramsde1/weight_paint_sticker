@@ -5,7 +5,17 @@ import math
 import json
 from pathlib import Path
 
+def delete_temp_material():
+    temp_materials = []
+    for material in bpy.data.materials:
+        if "TempMaterial" in material.name:
+            temp_materials.append(material)
 
+    for temp_material in temp_materials:
+        bpy.data.materials.remove(temp_material, do_unlink=True)
+
+
+    
 def create_rgb_to_weight_map():
 
     # Create a temporary material to access the color ramp node
@@ -21,6 +31,9 @@ def create_rgb_to_weight_map():
     color_ramp_node.color_ramp.elements[1].color = (1.0, 0.0, 0.0, 1.0)  # Red at weight 1.0
     color_ramp_node.color_ramp.elements.new(0.5).color = (0.0, 1.0, 0.0, 1.0)  # Green at weight 0.5
 
+
+    color_ramp_node.color_ramp.elements[1].position = 0.7
+
     rgb_to_weight_map = {}
     
     increments = 100
@@ -30,7 +43,7 @@ def create_rgb_to_weight_map():
         rgb_to_weight_map[sampled_rgb] = weight
 
     # Clean up: remove the temporary material
-    bpy.data.materials.remove(temp_material, do_unlink=True)
+    #bpy.data.materials.remove(temp_material, do_unlink=True)
 
     #kind of hacky but if the rgb value is black, give it the same value as if it were blue
     #adding black (for the background) to a number system that really spans between blue, red, green
@@ -136,6 +149,7 @@ obj = bpy.data.objects.get(object_name)
 
 folder_path = "E:\MODS\scripts\slickback_weight_textures"
 directory = Path(folder_path)
+delete_temp_material()
 rgb_to_weight_map = create_rgb_to_weight_map()
 
 for file_path in directory.glob("*.exr"):  
