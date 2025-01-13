@@ -28,51 +28,26 @@ def paint_hair_top(object_name):
         loose_parts = bpy.context.selected_objects
 
 
-        
+
         for part in loose_parts:
 
-            bpy.context.view_layer.objects.active = part
-            bpy.ops.paint.weight_gradient(xstart=151, xend=957, ystart=617, yend=359, flip=False)
-
-            # Get mesh data
-            mesh = part.data
-            bm = bmesh.new()
-            bm.from_mesh(mesh)
-            
-            bpy.ops.object.mode_set(mode='WEIGHT_PAINT')
-            # Ensure the UV map is active
-            if not bm.loops.layers.uv:
-                print(f"No UV map for object: {obj.name}")
-                continue
-            
-            uv_layer = bm.loops.layers.uv.active
-            
-            # Find the top (highest v) vertices in the UV map
-            uv_coords = [(loop[uv_layer].uv, vert) for face in bm.faces for loop, vert in zip(face.loops, face.verts)]
-            max_v = max(uv_coords, key=lambda uv_vert: uv_vert[0].y)[0].y
-            min_v = max_v - 0.2  # 20% down
-            # Paint gradient
-            for uv, vert in uv_coords:
-                # Calculate weight based on gradient
-                if uv.y >= max_v:
-                    weight = 1.0  # Fully weighted
-                elif uv.y < min_v:
-                    weight = 0.0  # No weight
-                else:
-                    weight = (uv.y - min_v) / (max_v - min_v)
-                
-                # Set weight for the vertex
-                for vg in obj.vertex_groups:
-                    vg.add([vert.index], weight, 'REPLACE')
-            
-            # Update the mesh
-            bm.to_mesh(mesh)
-            bm.free()
-            
-            # Set the mode back to Object after painting
             bpy.ops.object.mode_set(mode='OBJECT')
+            part.select_set(True)
+            bpy.context.view_layer.objects.active = part
 
 
+            bpy.ops.object.mode_set(mode='WEIGHT_PAINT')
+
+
+            world_coords = get_hair_root_position(part)
+            xstart = world_coords[0]
+            ystart = world_coords[1]
+
+            bpy.ops.paint.weight_gradient(xstart=xstart, xend=957, ystart=ystart, yend=359, flip=False)
+
+        bpy.ops.object.mode_set(mode='OBJECT')
+    
+        #join them all back again 
         # Select all the loose parts
         for obj in loose_parts:
             obj.select_set(True)
@@ -83,8 +58,36 @@ def paint_hair_top(object_name):
         # Join the loose parts back into one object
         bpy.ops.object.join()
 
-        # Print the new object's name
-        print("New Object Name:", bpy.context.object.name)
+        # Print the new objeworld_coords
+        #print("New Object Name:", bpy.context.object.name)
+        print("DONE")
+
+
+
+def get_hair_root_position(obj):
+    # Get the active UV map
+    uv_layer = obj.data.uv_layers.active.data
+
+    # Initialize variables to track the maximum V value and its corresponding UV coordinates
+    max_v = float('-inf')
+    max_uv_coords = None
+    max_loop_index = None
+
+    # Iterate through all UV coordinates
+    for loop_index, uv in enumerate(uv_layer):
+        uv_coords = uv.uv
+        if uv_coords[1] > max_v:  # Compare the V (y) value
+            max_v = uv_coords[1]
+            max_uv_coords = uv_coords
+            max_loop_index = loop_index
+
+    loop = obj.data.loops[max_loop_index]
+    vertex_index = loop.vertex_index
+    vertex = obj.data.vertices[vertex_index]
+    world_coords = obj.matrix_world @ vertex.co
+
+    return world_coords
+
 
 
 paint_hair_top("LOD_1_Group_0_Sub_1__esf_Hair00")
