@@ -1,6 +1,7 @@
 import bpy
 import bmesh
 import mathutils
+import math
 
 def paint_hair_top(object_name):
 
@@ -27,7 +28,10 @@ def paint_hair_top(object_name):
 
         # Get the new objects (all loose parts)
         loose_parts = bpy.context.selected_objects
+        
+        #each hair strand all have the same uvs so you should be able to do the next few lines once and apply it to all parts
 
+        uv_height, min_v, max_v = get_uv_height(obj)
 
 
         for part in loose_parts:
@@ -145,19 +149,15 @@ def apply_weight_gradient(obj_name, start, end, vertex_group_name):
 
 
 # Example Usage
-apply_weight_gradient(
-    obj_name="YourObjectNameHere",
-    start=(0, 0, 0),       # Start of the gradient (world coordinates)
-    end=(1, 0, 0),         # End of the gradient (world coordinates)
-    vertex_group_name="GradientWeights"
-)
+#apply_weight_gradient(
+#    obj_name="YourObjectNameHere",
+#    start=(0, 0, 0),       # Start of the gradient (world coordinates)
+#    end=(1, 0, 0),         # End of the gradient (world coordinates)
+#    vertex_group_name="GradientWeights"
+#)
 
 
 
-
-
-
-##get height
 
 def get_uv_height(obj):
     if obj.type != 'MESH':
@@ -184,26 +184,6 @@ def get_uv_height(obj):
     uv_height = max_v - min_v
     return uv_height, min_v, max_v
 
-# Example usage
-obj = bpy.context.object  # Use the active object
-if obj:
-    try:
-        height, min_v, max_v = get_uv_height(obj)
-        print(f"UV Height: {height}")
-        print(f"Min V: {min_v}")
-        print(f"Max V: {max_v}")
-    except ValueError as e:
-        print(e)
-else:
-    print("No active object selected.")
-
-
-
-
-#get closest uv
-
-import bpy
-import math
 
 def get_closest_uv(obj, target_uv):
     """
@@ -240,15 +220,15 @@ def get_closest_uv(obj, target_uv):
     return closest_uv, closest_index
 
 # Example usage
-obj = bpy.context.object  # Use the active object
-if obj:
-    try:
-        target_uv = (0.5, 0.5)  # Example target UV location
-        closest_uv, closest_index = get_closest_uv(obj, target_uv)
-        print(f"Closest UV: {closest_uv}")
-        print(f"Closest Index: {closest_index}")
-    except ValueError as e:
-        print(e)
-else:
-    print("No active object selected.")
+#obj = bpy.context.object  # Use the active object
+#if obj:
+#    try:
+#        target_uv = (0.5, 0.5)  # Example target UV location
+#        closest_uv, closest_index = get_closest_uv(obj, target_uv)
+#        print(f"Closest UV: {closest_uv}")
+#        print(f"Closest Index: {closest_index}")
+#    except ValueError as e:
+#        print(e)
+#else:
+#    print("No active object selected.")
 
