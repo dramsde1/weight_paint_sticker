@@ -32,7 +32,8 @@ def create_rgb_to_weight_map():
     color_ramp_node.color_ramp.elements.new(0.5).color = (0.0, 1.0, 0.0, 1.0)  # Green at weight 0.5
 
 
-    color_ramp_node.color_ramp.elements[1].position = 0.7
+    color_ramp_node.color_ramp.elements[1].position = 0.75
+    color_ramp_node.color_ramp.elements[0].position = 0.09
 
     rgb_to_weight_map = {}
     
@@ -43,7 +44,7 @@ def create_rgb_to_weight_map():
         rgb_to_weight_map[sampled_rgb] = weight
 
     # Clean up: remove the temporary material
-    #bpy.data.materials.remove(temp_material, do_unlink=True)
+    bpy.data.materials.remove(temp_material, do_unlink=True)
 
     #kind of hacky but if the rgb value is black, give it the same value as if it were blue
     #adding black (for the background) to a number system that really spans between blue, red, green
@@ -89,57 +90,50 @@ def get_reverse_lookup(data):
             reverse_lookup[value] = key
     return reverse_lookup
 
-
 def project_texture_to_weights(obj, image, vertex_group_name, rgb_to_weight_map):
-    # Get the vertex group to apply weights
-
-
     # Ensure the object is a mesh
-    if obj and obj.type == 'MESH':
-        # Ensure we're in Edit Mode to access bmesh
-        bpy.ops.object.mode_set(mode='EDIT')
-        
-        # Create a BMesh from the object mesh data
-        bm = bmesh.from_edit_mesh(obj.data)
-        
-        # Get the active UV layer
-        uv_layer = bm.loops.layers.uv.active
-        if not uv_layer:
-            print("No active UV layer found.")
-            return
-        
-        # Dictionary to store weights for vertices
-        vertex_dict = {}
-        # Loop through each face
-        for face in bm.faces:
-            # Only process selected faces (or vertices)
-            for loop in face.loops:
-                vertex = loop.vert  # Get the vertex from the loop
-                if vertex.select:
-                    uv = loop[uv_layer].uv  # Access the UV from the loop
-                    # Sample color from the texture at the UV coordinate
-                    red, green, blue, alpha = sample_texture_at_uv(obj, uv, image)
-                    # Convert the RGB color to a weight value
-                    weight_value = rgb_to_weight((red, green, blue), rgb_to_weight_map)
-
-                    # Store the weight value in the dictionary
-                    vertex_dict[vertex.index] = {"weight_value": weight_value, "vertex_group_name": vertex_group_name}
-
-        # Set to Object Mode to apply vertex weights
-        bpy.ops.object.mode_set(mode='OBJECT')
-        # Apply the vertex weights to the vertex group
-        for idx, data in vertex_dict.items():
-            vertex_group_name = data["vertex_group_name"]
-            weight_value = data["weight_value"]
-            vertex_group = obj.vertex_groups.get(vertex_group_name)
-            if not vertex_group:  # If the vertex group doesn't exist
-                vertex_group = obj.vertex_groups.new(name=vertex_group_name)
-            vertex_group.add([idx], weight_value, 'REPLACE')
-
-        # Free the BMesh after we're done
-        bm.free()
-    else:
+    if obj is None or obj.type != 'MESH':
         print("Selected object is not a mesh.")
+        return
+
+    # Access the mesh data directly without switching modes repeatedly
+    # Switching modes (Edit <-> Object) is costly. Instead, use bmesh.new() to create a BMesh object and bm.from_mesh(obj.data) to load mesh data directly.
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    uv_layer = bm.loops.layers.uv.active
+    if not uv_layer:
+        print("No active UV layer found.")
+        bm.free()
+        return
+
+    # Ensure the vertex group exists
+    vertex_group = obj.vertex_groups.get(vertex_group_name)
+    if not vertex_group:
+        vertex_group = obj.vertex_groups.new(name=vertex_group_name)
+
+    # Dictionary to store weights for vertices
+    vertex_weights = {}
+
+    # Iterate through faces and process selected vertices
+    for face in bm.faces:
+        for loop in face.loops:
+            vertex = loop.vert
+            if vertex.select:
+                uv = loop[uv_layer].uv
+                # Sample color from the texture at the UV coordinate
+                red, green, blue, alpha = sample_texture_at_uv(obj, uv, image)
+                # Convert RGB to weight
+                weight_value = rgb_to_weight((red, green, blue), rgb_to_weight_map)
+
+                # Accumulate weights for the vertex (to avoid duplicates)
+                vertex_weights[vertex.index] = weight_value
+
+    # Apply the weights in Object Mode
+    bm.to_mesh(obj.data)  # Write changes back to the mesh
+    bm.free()
+
+    for idx, weight_value in vertex_weights.items():
+        vertex_group.add([idx], weight_value, 'REPLACE')
 
 
 
@@ -147,14 +141,18 @@ def project_texture_to_weights(obj, image, vertex_group_name, rgb_to_weight_map)
 object_name = "low_head"
 obj = bpy.data.objects.get(object_name)
 
-folder_path = "E:\MODS\scripts\slickback_weight_textures"
+#folder_path = "E:\MODS\scripts\slickback_weight_textures"
+folder_path = "E:\MODS\scripts\slickback_extras"
 directory = Path(folder_path)
 delete_temp_material()
 rgb_to_weight_map = create_rgb_to_weight_map()
 
-for file_path in directory.glob("*.exr"):  
+file_paths = list(directory.glob("*.exr")) + list(directory.glob("*.png"))
+
+for idx, file_path in enumerate(file_paths):
     vertex_group_name = Path(file_path).stem
+    print(vertex_group_name)
     img = bpy.data.images.load(str(file_path.resolve()))
     project_texture_to_weights(obj, img, vertex_group_name, rgb_to_weight_map)
     bpy.data.images.remove(img, do_unlink=True)
-    breakpoint()
+    print(idx)
