@@ -33,6 +33,10 @@ def paint_hair_top(object_name):
 
         uv_height, min_v, max_v = get_uv_height(obj)
 
+        #get X percent down the uv map and return those uv points
+
+        closest_uv, closest_index = closest_uv = get_closest_uv(obj, target_uv)
+
 
         for part in loose_parts:
 
@@ -147,7 +151,6 @@ def apply_weight_gradient(obj_name, start, end, vertex_group_name):
 
     print(f"Weight gradient applied to '{vertex_group_name}' in object '{obj_name}'.")
 
-
 # Example Usage
 #apply_weight_gradient(
 #    obj_name="YourObjectNameHere",
@@ -155,9 +158,6 @@ def apply_weight_gradient(obj_name, start, end, vertex_group_name):
 #    end=(1, 0, 0),         # End of the gradient (world coordinates)
 #    vertex_group_name="GradientWeights"
 #)
-
-
-
 
 def get_uv_height(obj):
     if obj.type != 'MESH':
