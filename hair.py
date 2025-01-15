@@ -3,7 +3,7 @@ import bmesh
 import mathutils
 import math
 
-def paint_hair_top(object_name):
+def paint_hair_top(object_name, percent_covered):
 
     # Ensure you're in Object Mode
     if bpy.context.object.mode != 'OBJECT':
@@ -30,10 +30,10 @@ def paint_hair_top(object_name):
         loose_parts = bpy.context.selected_objects
         
         #each hair strand all have the same uvs so you should be able to do the next few lines once and apply it to all parts
-
         uv_height, min_v, max_v = get_uv_height(obj)
-
-        #get X percent down the uv map and return those uv points
+        gradient_length = uv_height * percent_covered
+        v_start = max_v
+        v_end = max_v - gradient_length
 
         closest_uv, closest_index = closest_uv = get_closest_uv(obj, target_uv)
 
