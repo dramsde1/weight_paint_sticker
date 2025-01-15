@@ -32,7 +32,7 @@ def paint_hair_top(object_name, vertex_group_name, percent_changed):
         strand = loose_parts[0]
         uv_height, min_point, max_point = get_uv_height(strand)
         v_end = max_point[1] - (uv_height * percent_changed) 
-        end_point = [max_point[0], v_end]
+        end_point = [min_point[0], v_end]
         start_closest_uv = get_closest_uv(strand, max_point)
         end_closest_uv = get_closest_uv(strand, end_point)
 
@@ -100,7 +100,7 @@ def apply_weight_gradient(obj, start, end, vertex_group_name):
         # Assign the weight to the vertex group
         vertex_group.add([vertex.index], weight, 'REPLACE')
 
-    print(f"Weight gradient applied to '{vertex_group_name}' in object '{obj_name}'.")
+    print(f"Weight gradient applied to '{vertex_group_name}' in object '{obj.name}'.")
 
 
 def get_uv_height(obj):
@@ -199,3 +199,5 @@ def uv_to_3d(obj, uv_coords):
     #raise ValueError("No corresponding vertex found for the UV coordinates.")
     return None
 
+if __name__ == "__main__":
+    paint_hair_top("plane", "hair", 0.20)
