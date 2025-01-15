@@ -3,7 +3,7 @@ import bmesh
 import mathutils
 import math
 
-def paint_hair_top(object_name):
+def paint_hair_top(object_name, vertex_group_name, percent_changed):
 
     # Ensure you're in Object Mode
     if bpy.context.object.mode != 'OBJECT':
@@ -29,81 +29,37 @@ def paint_hair_top(object_name):
         # Get the new objects (all loose parts)
         loose_parts = bpy.context.selected_objects
         
-        #each hair strand all have the same uvs so you should be able to do the next few lines once and apply it to all parts
-
-        uv_height, min_v, max_v = get_uv_height(obj)
-
-        #get X percent down the uv map and return those uv points
-
-        closest_uv, closest_index = closest_uv = get_closest_uv(obj, target_uv)
+        strand = loose_parts[0]
+        uv_height, min_point, max_point = get_uv_height(strand)
+        v_end = max_point[1] - (uv_height * percent_changed) 
+        end_point = [max_point[0], v_end]
+        start_closest_uv = get_closest_uv(strand, max_point)
+        end_closest_uv = get_closest_uv(strand, end_point)
 
 
         for part in loose_parts:
 
-            bpy.ops.object.mode_set(mode='OBJECT')
-            part.select_set(True)
-            bpy.context.view_layer.objects.active = part
-
-
-            bpy.ops.object.mode_set(mode='WEIGHT_PAINT')
-
-
-            world_coords = get_hair_root_position(part)
-            xstart = world_coords[0]
-            ystart = world_coords[1]
-
-            bpy.ops.paint.weight_gradient(xstart=xstart, xend=957, ystart=ystart, yend=359, flip=False)
+            part_root = uv_to_3d(part, start_closest_uv)
+            part_end = uv_to_3d(part, end_closest_uv)
+            apply_weight_gradient(part, part_root, part_end, vertex_group_name)
 
         bpy.ops.object.mode_set(mode='OBJECT')
-    
         #join them all back again 
         # Select all the loose parts
         for obj in loose_parts:
             obj.select_set(True)
-
         # Set the first loose part as active for joining
         bpy.context.view_layer.objects.active = loose_parts[0]
 
         # Join the loose parts back into one object
         bpy.ops.object.join()
-
         # Print the new objeworld_coords
         #print("New Object Name:", bpy.context.object.name)
         print("DONE")
 
 
 
-def get_hair_root_position(obj):
-    # Get the active UV map
-    uv_layer = obj.data.uv_layers.active.data
-
-    # Initialize variables to track the maximum V value and its corresponding UV coordinates
-    max_v = float('-inf')
-    max_uv_coords = None
-    max_loop_index = None
-
-    # Iterate through all UV coordinates
-    for loop_index, uv in enumerate(uv_layer):
-        uv_coords = uv.uv
-        if uv_coords[1] > max_v:  # Compare the V (y) value
-            max_v = uv_coords[1]
-            max_uv_coords = uv_coords
-            max_loop_index = loop_index
-
-    loop = obj.data.loops[max_loop_index]
-    vertex_index = loop.vertex_index
-    vertex = obj.data.vertices[vertex_index]
-    world_coords = obj.matrix_world @ vertex.co
-
-    return world_coords
-
-
-
-paint_hair_top("LOD_1_Group_0_Sub_1__esf_Hair00")
-
-
-
-def apply_weight_gradient(obj_name, start, end, vertex_group_name):
+def apply_weight_gradient(obj, start, end, vertex_group_name):
     """
     Mimics the weight gradient operator by applying weights directly.
     
@@ -113,11 +69,6 @@ def apply_weight_gradient(obj_name, start, end, vertex_group_name):
     - end: The end point of the gradient (world coordinates).
     - vertex_group_name: The name of the vertex group to modify.
     """
-    # Get the object
-    obj = bpy.data.objects.get(obj_name)
-    if not obj or obj.type != 'MESH':
-        raise ValueError(f"Object '{obj_name}' not found or is not a mesh.")
-
     # Ensure the object has a vertex group
     if vertex_group_name not in obj.vertex_groups:
         obj.vertex_groups.new(name=vertex_group_name)
@@ -151,13 +102,6 @@ def apply_weight_gradient(obj_name, start, end, vertex_group_name):
 
     print(f"Weight gradient applied to '{vertex_group_name}' in object '{obj_name}'.")
 
-# Example Usage
-#apply_weight_gradient(
-#    obj_name="YourObjectNameHere",
-#    start=(0, 0, 0),       # Start of the gradient (world coordinates)
-#    end=(1, 0, 0),         # End of the gradient (world coordinates)
-#    vertex_group_name="GradientWeights"
-#)
 
 def get_uv_height(obj):
     if obj.type != 'MESH':
@@ -172,17 +116,25 @@ def get_uv_height(obj):
     min_v = float('inf')
     max_v = float('-inf')
 
+    min_point = [None, None]
+    max_point = [None, None]
+
     # Iterate through UV coordinates to find min and max V
     for uv_loop in uv_layer.data:
         v = uv_loop.uv[1]  # Get the V (y) coordinate
+        u = uv_loop.uv[0]  # Get the V (y) coordinate
         if v < min_v:
             min_v = v
+            min_point[0] = u
+            min_point[1] = v
         if v > max_v:
             max_v = v
+            max_point[0] = u
+            max_point[1] = v
 
     # Calculate the height
     uv_height = max_v - min_v
-    return uv_height, min_v, max_v
+    return uv_height, min_point, max_point
 
 
 def get_closest_uv(obj, target_uv):
@@ -217,18 +169,33 @@ def get_closest_uv(obj, target_uv):
             closest_uv = uv
             closest_index = index
 
-    return closest_uv, closest_index
+    return closest_uv
 
-# Example usage
-#obj = bpy.context.object  # Use the active object
-#if obj:
-#    try:
-#        target_uv = (0.5, 0.5)  # Example target UV location
-#        closest_uv, closest_index = get_closest_uv(obj, target_uv)
-#        print(f"Closest UV: {closest_uv}")
-#        print(f"Closest Index: {closest_index}")
-#    except ValueError as e:
-#        print(e)
-#else:
-#    print("No active object selected.")
+
+def uv_to_3d(obj, uv_coords):
+    # Ensure the object is in object mode and has a UV map
+    if obj.mode != 'OBJECT':
+        bpy.ops.object.mode_set(mode='OBJECT')
+
+    # Make sure the object has at least one UV map
+    if len(obj.data.uv_layers) == 0:
+        raise ValueError(f"The object {obj.name} has no UV map.")
+    
+    # Get the active UV layer (default is usually the first one)
+    uv_layer = obj.data.uv_layers.active.data
+    
+    # Loop through the faces of the object
+    for poly in obj.data.polygons:
+        # For each face, loop through the vertices and check if the UV coordinates match
+        for loop_idx in poly.loop_indices:
+            uv = uv_layer[loop_idx].uv
+            # Check if the UV coordinates match the given UV (use a small threshold for comparison)
+            if (abs(uv_coords[0] - uv[0]) < 0.001 and abs(uv_coords[1] - uv[1]) < 0.001):
+                # Return the corresponding 3D vertex
+                vertex = obj.data.vertices[poly.vertices[loop_idx]]
+                return obj.matrix_world @ vertex.co  # Convert local vertex to world space
+    
+    # If no match is found
+    #raise ValueError("No corresponding vertex found for the UV coordinates.")
+    return None
 
